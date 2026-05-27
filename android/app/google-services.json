@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "988044808292",
+    "project_id": "yatin-bike-rent",
+    "storage_bucket": "yatin-bike-rent.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:988044808292:android:8d21a29b098aec49a20f71",
+        "android_client_info": {
+          "package_name": "com.yatin.yatin_bike_rent"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB1g_MZ8MGzF-BREoWt2FmpqFkJzEeYNUU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

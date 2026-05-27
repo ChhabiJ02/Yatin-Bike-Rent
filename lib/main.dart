@@ -1,24 +1,51 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'screens/login_screen.dart';
 
-void main() {
-  runApp(const BikeRentDemoApp());
+import 'screens/splash_screen.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  runApp(const YatinBikeRentApp());
 }
 
-class BikeRentDemoApp extends StatelessWidget {
-  const BikeRentDemoApp({super.key});
+class YatinBikeRentApp extends StatelessWidget {
+  const YatinBikeRentApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Bike Rent Demo',
+      title: 'Yatin Bike Rent',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+        scaffoldBackgroundColor: const Color(0xFFF4F7FA),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.teal.shade700,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            padding: const EdgeInsets.symmetric(vertical: 18),
+          ),
+        ),
+        cardTheme: CardThemeData(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          elevation: 6,
+          margin: const EdgeInsets.symmetric(vertical: 10),
+        ),
       ),
-      home: const LoginScreen(),
+      home: const SplashScreen(),
     );
   }
 }
@@ -79,7 +106,7 @@ class _BikeRentHomePageState extends State<BikeRentHomePage> {
       "http://localhost/bike_api/add_bike.php",
     );
 
-    var response = await http.post(
+    await http.post(
       url,
       body: {
         "bike_name": "Activa",
@@ -89,7 +116,7 @@ class _BikeRentHomePageState extends State<BikeRentHomePage> {
       },
     );
 
-    print(response.body);
+    // Handle API response as needed.
   }
 
   void _addBooking(Booking booking) {

@@ -1,4 +1,4 @@
-package com.example.hiten_bike_rent
+package com.yatin.yatin_bike_rent
 
 import io.flutter.embedding.android.FlutterActivity
 
