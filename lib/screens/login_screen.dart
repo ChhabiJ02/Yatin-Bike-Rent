@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../admin/admin_dashboard.dart';
 import '../customer/customer_dashboard.dart';
 import '../staff/staff_dashboard.dart';
 import 'register_screen.dart';
 import '../services/auth_service.dart';
+import '../theme/app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -18,16 +20,201 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
+  final TextEditingController resetEmailController = TextEditingController();
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+
+  static const String _savedEmailKey = 'saved_email';
+  static const String _savedPasswordKey = 'saved_password';
+  static const String _rememberMeKey = 'remember_me';
 
   bool obscurePassword = true;
   bool rememberMe = false;
   bool isLoading = false;
-  String selectedRole = 'Customer';
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    resetEmailController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
-    print('LoginScreen: initState');
+    _loadSavedCredentials();
+  }
+
+  Future<void> _loadSavedCredentials() async {
+    try {
+      final savedRemember = await _secureStorage.read(key: _rememberMeKey);
+      final savedEmail = await _secureStorage.read(key: _savedEmailKey);
+      final savedPassword = await _secureStorage.read(key: _savedPasswordKey);
+
+      if (!mounted) return;
+      setState(() {
+        rememberMe = savedRemember == 'true';
+        if (rememberMe) {
+          emailController.text = savedEmail ?? '';
+          passwordController.text = savedPassword ?? '';
+        }
+      });
+    } catch (_) {
+      // Ignore storage failures and continue with empty fields.
+    }
+  }
+
+  Future<void> _saveCredentials() async {
+    if (rememberMe) {
+      await _secureStorage.write(key: _savedEmailKey, value: emailController.text.trim());
+      await _secureStorage.write(key: _savedPasswordKey, value: passwordController.text.trim());
+      await _secureStorage.write(key: _rememberMeKey, value: 'true');
+    } else {
+      await _secureStorage.delete(key: _savedEmailKey);
+      await _secureStorage.delete(key: _savedPasswordKey);
+      await _secureStorage.delete(key: _rememberMeKey);
+    }
+  }
+
+  Future<void> _clearSavedCredentials() async {
+    await _secureStorage.delete(key: _savedEmailKey);
+    await _secureStorage.delete(key: _savedPasswordKey);
+    await _secureStorage.delete(key: _rememberMeKey);
+  }
+
+  Future<void> _handleLogin() async {
+    setState(() {
+      isLoading = true;
+    });
+    try {
+      final cred = await AuthService.signIn(
+        email: emailController.text.trim(),
+        password: passwordController.text.trim(),
+      );
+      final user = AuthService.currentUser ?? cred.user;
+      final uid = user?.uid;
+      final roleFromDb = uid == null
+          ? null
+          : await AuthService.getUserRole(uid);
+
+      if (roleFromDb == null) {
+        throw FirebaseAuthException(
+          code: 'missing-role',
+          message: 'No dashboard role found for this account.',
+        );
+      }
+
+      Widget destination;
+      if (roleFromDb == 'Admin') {
+        destination = const AdminDashboard();
+      } else if (roleFromDb == 'Staff') {
+        destination = const StaffDashboard();
+      } else {
+        destination = const CustomerDashboard();
+      }
+
+      await _saveCredentials();
+      if (!mounted) return;
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => destination));
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message ?? 'Login failed')));
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _showResetPasswordDialog() async {
+    resetEmailController.text = emailController.text.trim();
+    var isSending = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (builderContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Reset password'),
+              content: TextField(
+                controller: resetEmailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  prefixIcon: Icon(Icons.email_outlined),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSending
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: isSending
+                      ? null
+                      : () async {
+                          final email = resetEmailController.text.trim();
+                          final messenger = ScaffoldMessenger.of(
+                            builderContext,
+                          );
+                          final navigator = Navigator.of(dialogContext);
+                          if (email.isEmpty) {
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Enter your email address.'),
+                              ),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() => isSending = true);
+                          try {
+                            await AuthService.sendPasswordResetEmail(email);
+                            if (!dialogContext.mounted) return;
+                            navigator.pop();
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Password reset email sent. Check your inbox.',
+                                ),
+                              ),
+                            );
+                          } on FirebaseAuthException catch (e) {
+                            if (!dialogContext.mounted) return;
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  e.message ?? 'Could not send reset email',
+                                ),
+                              ),
+                            );
+                          } finally {
+                            if (dialogContext.mounted) {
+                              setDialogState(() => isSending = false);
+                            }
+                          }
+                        },
+                  child: isSending
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Send'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -36,24 +223,15 @@ class _LoginScreenState extends State<LoginScreen> {
       body: Stack(
         children: [
           Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  const Color(0xFF1a1a2e),
-                  Colors.orange.shade900,
-                  Colors.orange.shade800,
-                  const Color(0xFFF4F7FA),
-                ],
-                stops: const [0, 0.3, 0.5, 1],
-              ),
-            ),
+            decoration: const BoxDecoration(gradient: AppColors.pageGradient),
           ),
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 20,
+                ),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 500),
                   child: Column(
@@ -70,12 +248,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                 shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.orange.withOpacity(0.5),
+                                    color: AppColors.ember.withValues(
+                                      alpha: 0.5,
+                                    ),
                                     blurRadius: 25,
                                     spreadRadius: 8,
                                   ),
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.2),
+                                    color: Colors.black.withValues(alpha: 0.2),
                                     blurRadius: 15,
                                     spreadRadius: 3,
                                   ),
@@ -91,9 +271,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                   child: Image.asset(
                                     'assets/logos/png/logo1.png',
                                     fit: BoxFit.contain,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      return const FlutterLogo(size: 100);
-                                    },
                                   ),
                                 ),
                               ),
@@ -110,7 +287,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 shadows: [
                                   Shadow(
                                     blurRadius: 15,
-                                    color: Colors.black.withOpacity(0.4),
+                                    color: Colors.black.withValues(alpha: 0.4),
                                     offset: const Offset(2, 4),
                                   ),
                                 ],
@@ -123,12 +300,12 @@ class _LoginScreenState extends State<LoginScreen> {
                               style: TextStyle(
                                 fontSize: 28,
                                 fontWeight: FontWeight.w700,
-                                color: Colors.orange.shade200,
+                                color: AppColors.amber,
                                 letterSpacing: 2,
                                 shadows: [
                                   Shadow(
                                     blurRadius: 15,
-                                    color: Colors.black.withOpacity(0.4),
+                                    color: Colors.black.withValues(alpha: 0.4),
                                     offset: const Offset(2, 4),
                                   ),
                                 ],
@@ -141,11 +318,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       // Login form container
                       Container(
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.96),
+                          color: Colors.white.withValues(alpha: 0.96),
                           borderRadius: BorderRadius.circular(28),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.12),
+                              color: Colors.black.withValues(alpha: 0.12),
                               blurRadius: 32,
                               offset: const Offset(0, 16),
                               spreadRadius: 2,
@@ -153,7 +330,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           ],
                         ),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 28,
+                            vertical: 32,
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
@@ -163,7 +343,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 style: TextStyle(
                                   fontSize: 26,
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFF103B3A),
+                                  color: AppColors.ink,
                                 ),
                               ),
                               const SizedBox(height: 10),
@@ -177,42 +357,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                               const SizedBox(height: 32),
-                              // Role selection
-                              const Text(
-                                'Select Your Role',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF103B3A),
-                                ),
-                              ),
-                              const SizedBox(height: 14),
-                              Wrap(
-                                spacing: 10,
-                                runSpacing: 10,
-                                alignment: WrapAlignment.center,
-                                children: [
-                                  _RoleChip(
-                                    label: 'Customer',
-                                    selected: selectedRole == 'Customer',
-                                    icon: Icons.person,
-                                    onTap: () => setState(() => selectedRole = 'Customer'),
-                                  ),
-                                  _RoleChip(
-                                    label: 'Staff',
-                                    selected: selectedRole == 'Staff',
-                                    icon: Icons.support_agent,
-                                    onTap: () => setState(() => selectedRole = 'Staff'),
-                                  ),
-                                  _RoleChip(
-                                    label: 'Admin',
-                                    selected: selectedRole == 'Admin',
-                                    icon: Icons.admin_panel_settings,
-                                    onTap: () => setState(() => selectedRole = 'Admin'),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 28),
                               // Email field with enhanced styling
                               TextField(
                                 controller: emailController,
@@ -225,7 +369,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   prefixIcon: Icon(
                                     Icons.person_outline,
-                                    color: Colors.orange.shade700,
+                                    color: AppColors.ember,
                                   ),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(14),
@@ -242,7 +386,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(14),
                                     borderSide: BorderSide(
-                                      color: Colors.orange.shade700,
+                                      color: AppColors.ember,
                                       width: 2,
                                     ),
                                   ),
@@ -268,7 +412,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   prefixIcon: Icon(
                                     Icons.lock_outline,
-                                    color: Colors.orange.shade700,
+                                    color: AppColors.ember,
                                   ),
                                   suffixIcon: IconButton(
                                     onPressed: () {
@@ -280,7 +424,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       obscurePassword
                                           ? Icons.visibility_off
                                           : Icons.visibility,
-                                      color: Colors.orange.shade700,
+                                      color: AppColors.ember,
                                     ),
                                   ),
                                   border: OutlineInputBorder(
@@ -298,7 +442,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(14),
                                     borderSide: BorderSide(
-                                      color: Colors.orange.shade700,
+                                      color: AppColors.ember,
                                       width: 2,
                                     ),
                                   ),
@@ -316,29 +460,48 @@ class _LoginScreenState extends State<LoginScreen> {
                                 children: [
                                   Checkbox(
                                     value: rememberMe,
-                                    activeColor: Colors.orange.shade700,
+                                    activeColor: AppColors.ember,
                                     checkColor: Colors.white,
-                                    onChanged: (value) {
+                                    onChanged: (value) async {
+                                      final newValue = value ?? false;
                                       setState(() {
-                                        rememberMe = value ?? false;
+                                        rememberMe = newValue;
                                       });
+                                      if (!newValue) {
+                                        await _clearSavedCredentials();
+                                      }
                                     },
                                   ),
-                                  const Text(
-                                    'Remember me',
-                                    style: TextStyle(fontSize: 14, color: Colors.black87),
+                                  const Expanded(
+                                    child: Text(
+                                      'Remember me',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
                                   ),
-                                  const Spacer(),
                                   TextButton(
-                                    onPressed: () {},
+                                    onPressed: _showResetPasswordDialog,
                                     style: TextButton.styleFrom(
                                       splashFactory: NoSplash.splashFactory,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 8,
+                                      ),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
                                     ),
                                     child: Text(
                                       'Forgot password?',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         fontSize: 14,
-                                        color: Colors.orange.shade700,
+                                        color: AppColors.ember,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -350,59 +513,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               SizedBox(
                                 height: 56,
                                 child: ElevatedButton(
-                                  onPressed: isLoading
-                                      ? null
-                                      : () async {
-                                          setState(() {
-                                            isLoading = true;
-                                          });
-                                          try {
-                                            final cred = await AuthService.signIn(
-                                              email:
-                                                  emailController.text.trim(),
-                                              password: passwordController.text
-                                                  .trim(),
-                                            );
-                                            final uid = cred.user?.uid;
-                                            String roleFromDb = selectedRole;
-                                            if (uid != null) {
-                                              final r =
-                                                  await AuthService.getUserRole(
-                                                      uid);
-                                              if (r != null) roleFromDb = r;
-                                            }
-
-                                            Widget destination;
-                                            if (roleFromDb == 'Admin') {
-                                              destination =
-                                                  const AdminDashboard();
-                                            } else if (roleFromDb == 'Staff') {
-                                              destination =
-                                                  const StaffDashboard();
-                                            } else {
-                                              destination =
-                                                  const CustomerDashboard();
-                                            }
-
-                                            if (!mounted) return;
-                                            Navigator.of(context).pushReplacement(
-                                                MaterialPageRoute(
-                                                    builder: (_) =>
-                                                        destination));
-                                          } on FirebaseAuthException catch (e) {
-                                            if (!mounted) return;
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(SnackBar(
-                                                    content: Text(e.message ??
-                                                        'Login failed')));
-                                          } finally {
-                                            if (mounted) {
-                                              setState(() => isLoading = false);
-                                            }
-                                          }
-                                        },
+                                  onPressed: isLoading ? null : _handleLogin,
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.orange.shade700,
+                                    backgroundColor: AppColors.ember,
                                     foregroundColor: Colors.white,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(14),
@@ -410,8 +523,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                     elevation: 4,
                                   ),
                                   child: isLoading
-                                      ? const CircularProgressIndicator(
-                                          color: Colors.white)
+                                      ? const SizedBox(
+                                          height: 22,
+                                          width: 22,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2.5,
+                                          ),
+                                        )
                                       : const Text(
                                           'Login',
                                           style: TextStyle(
@@ -425,79 +544,39 @@ class _LoginScreenState extends State<LoginScreen> {
                               // Sign up button
                               TextButton(
                                 onPressed: () async {
-                                  final created = await Navigator.of(context)
-                                      .push<bool>(MaterialPageRoute(
-                                          builder: (_) =>
-                                              const RegisterScreen()));
+                                  final navigator = Navigator.of(context);
+                                  final messenger = ScaffoldMessenger.of(
+                                    context,
+                                  );
+                                  final created = await navigator.push<bool>(
+                                    MaterialPageRoute(
+                                      builder: (_) => const RegisterScreen(),
+                                    ),
+                                  );
+                                  if (!mounted) return;
                                   if (created == true) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                            content: Text(
-                                                'Account created — please log in')));
+                                    messenger.showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Account created - please log in',
+                                        ),
+                                      ),
+                                    );
                                   }
                                 },
                                 style: TextButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                   splashFactory: NoSplash.splashFactory,
                                 ),
                                 child: Text(
                                   "Don't have an account? Create one",
                                   style: TextStyle(
                                     fontSize: 14,
-                                    color: Colors.orange.shade700,
+                                    color: AppColors.ember,
                                     fontWeight: FontWeight.w600,
                                   ),
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              // Role info container
-                              Container(
-                                padding: const EdgeInsets.all(18),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.shade50,
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: Colors.orange.shade200,
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.admin_panel_settings,
-                                          color: Colors.orange.shade700,
-                                          size: 20,
-                                        ),
-                                        const SizedBox(width: 12),
-                                        const Expanded(
-                                          child: Text(
-                                            'Admin manages vehicles, bookings, staff and reports.',
-                                            style: TextStyle(fontSize: 13),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 14),
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.support_agent,
-                                          color: Colors.orange.shade700,
-                                          size: 20,
-                                        ),
-                                        const SizedBox(width: 12),
-                                        const Expanded(
-                                          child: Text(
-                                            'Staff adds customer entries and helps manage rentals.',
-                                            style: TextStyle(fontSize: 13),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
                                 ),
                               ),
                             ],
@@ -512,57 +591,6 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ],
       ),
-    );
-  }
-
-}
-
-class _RoleChip extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _RoleChip({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ChoiceChip(
-      label: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: selected ? Colors.white : Colors.orange.shade700,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: selected ? Colors.white : Colors.orange.shade700,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
-      ),
-      selected: selected,
-      selectedColor: Colors.orange.shade700,
-      backgroundColor: Colors.orange.shade50,
-      side: BorderSide(
-        color: selected ? Colors.orange.shade700 : Colors.orange.shade200,
-        width: 1.5,
-      ),
-      onSelected: (_) => onTap(),
     );
   }
 }

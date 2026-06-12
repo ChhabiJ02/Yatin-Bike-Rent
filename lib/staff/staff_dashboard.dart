@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
+
 import '../models/booking.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/rental_service.dart';
+import '../widgets/user_app_bar_title.dart';
+import '../theme/app_theme.dart';
+import '../widgets/app_settings_menu.dart';
 import 'challan_form.dart';
 
 class StaffDashboard extends StatefulWidget {
@@ -9,236 +15,309 @@ class StaffDashboard extends StatefulWidget {
   State<StaffDashboard> createState() => _StaffDashboardState();
 }
 
-// Challan form moved to lib/staff/challan_form.dart
-
 class _StaffDashboardState extends State<StaffDashboard> {
-  // Challan storage moved to challan_form.dart
-
-  static const _bookings = [
-    Booking(
-      id: 'b1',
-      customerName: 'Anita Sharma',
-      vehicleName: 'City Cruiser',
-      rentalPeriod: 'May 22 - May 23',
-      status: 'Confirmed',
-      totalAmount: 300,
-    ),
-    Booking(
-      id: 'b2',
-      customerName: 'Ravi Patel',
-      vehicleName: 'Electric Assist',
-      rentalPeriod: 'May 24 - May 26',
-      status: 'Pending',
-      totalAmount: 1300,
-    ),
-    Booking(
-      id: 'b3',
-      customerName: 'Meera Jain',
-      vehicleName: 'Mountain Rider',
-      rentalPeriod: 'May 27 - May 28',
-      status: 'Checked In',
-      totalAmount: 1000,
-    ),
-  ];
 
   void _openEntryForm() {
     ChallanForm.show(context);
   }
 
-  // Challan form logic moved to challan_form.dart
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Staff Dashboard'),
+        foregroundColor: Colors.white,
+        title: const UserAppBarTitle(fallbackTitle: 'Staff'),
         actions: [
           IconButton(onPressed: () {}, icon: const Icon(Icons.filter_list)),
+          const AppSettingsMenu(),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(22),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(15),
-                    blurRadius: 20,
-                    offset: const Offset(0, 12),
+      body: Container(
+        decoration: const BoxDecoration(gradient: AppColors.pageGradient),
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: AppColors.heroGradient,
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.ember.withValues(alpha: 0.24),
+                      blurRadius: 28,
+                      offset: const Offset(0, 16),
+                    ),
+                  ],
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.assignment_turned_in,
+                      color: Colors.white,
+                      size: 42,
+                    ),
+                    SizedBox(height: 18),
+                    Text(
+                      'Booking Control Desk',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Track customer reservations and update status quickly.',
+                      style: TextStyle(color: Colors.white, height: 1.5),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: AppTheme.softCard(),
+                      child: StreamBuilder(
+                        stream: RentalService.bookingsStream(),
+                        builder: (context, snapshot) {
+                          final docs = snapshot.data?.docs ?? [];
+                          final open = docs.where((d) => (d.data()['status'] as String?) == 'Pending').length;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.pending_actions, color: AppColors.amber, size: 24),
+                              const SizedBox(height: 10),
+                              Text('$open', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
+                              const SizedBox(height: 4),
+                              const Text('Open', style: TextStyle(color: AppColors.muted, fontSize: 12)),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: AppTheme.softCard(),
+                      child: StreamBuilder(
+                        stream: RentalService.bookingsStream(),
+                        builder: (context, snapshot) {
+                          final docs = snapshot.data?.docs ?? [];
+                          final confirmed = docs.where((d) => (d.data()['status'] as String?) == 'Confirmed').length;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.verified, color: AppColors.mint, size: 24),
+                              const SizedBox(height: 10),
+                              Text('$confirmed', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
+                              const SizedBox(height: 4),
+                              const Text('Confirmed', style: TextStyle(color: AppColors.muted, fontSize: 12)),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: AppTheme.softCard(),
+                      child: StreamBuilder(
+                        stream: RentalService.bookingsStream(),
+                        builder: (context, snapshot) {
+                          final docs = snapshot.data?.docs ?? [];
+                          final checkedIn = docs.where((d) => (d.data()['status'] as String?) == 'Checked In').length;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.login, color: AppColors.sky, size: 24),
+                              const SizedBox(height: 10),
+                              Text('$checkedIn', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
+                              const SizedBox(height: 4),
+                              const Text('Checked In', style: TextStyle(color: AppColors.muted, fontSize: 12)),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
                   ),
                 ],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
-                    'Staff Booking Management',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Track customer reservations and update status quickly.',
-                    style: TextStyle(color: Colors.black54, height: 1.5),
-                  ),
-                ],
+              const SizedBox(height: 24),
+              const Text(
+                'Recent Bookings',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
               ),
-            ),
-            const SizedBox(height: 22),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: const [
-                _MiniPanel(title: 'Open', value: '8', color: Colors.orange),
-                _MiniPanel(title: 'Confirmed', value: '14', color: Colors.teal),
-                _MiniPanel(title: 'Checked In', value: '5', color: Colors.blue),
-              ],
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Recent Bookings',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            ..._bookings.map((booking) => _BookingCard(booking: booking)),
-          ],
-        ),
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          child: ElevatedButton.icon(
-            onPressed: _openEntryForm,
-            icon: const Icon(Icons.add_business),
-            label: const Text('New Entry'),
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
+              StreamBuilder(
+                stream: RentalService.bookingsStream(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: Padding(padding: EdgeInsets.all(12), child: SizedBox(height:24,width:24,child:CircularProgressIndicator(strokeWidth:2.5))));
+                  }
+                  final docs = snapshot.data?.docs ?? [];
+                  if (docs.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Text('No bookings available.', style: TextStyle(color: AppColors.muted)),
+                    );
+                  }
+                  return Column(
+                    children: docs.map((doc) {
+                      final data = doc.data();
+                      final customerName = (data['customerName'] as String?) ?? (data['customer'] as String?) ?? 'Customer';
+                      final vehicleName = (data['vehicleName'] as String?) ?? 'Vehicle';
+                      final start = data['startAt'] is Timestamp ? (data['startAt'] as Timestamp).toDate() : null;
+                      final end = data['endAt'] is Timestamp ? (data['endAt'] as Timestamp).toDate() : null;
+                      final period = start != null && end != null ? '${start.day}-${start.month} - ${end.day}-${end.month}' : (data['rentalPeriod'] as String?) ?? '';
+                      final status = (data['status'] as String?) ?? 'Pending';
+                      final total = ((data['totalAmount'] as num?)?.toInt() ?? 0).toString();
+
+                      return _BookingCard(
+                        booking: Booking(
+                          id: doc.id,
+                          customerName: customerName,
+                          vehicleName: vehicleName,
+                          rentalPeriod: period,
+                          status: status,
+                          totalAmount: int.tryParse(total) ?? 0,
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+              const SizedBox(height: 92),
+            ],
           ),
         ),
       ),
-    );
-  }
-}
-
-class _MiniPanel extends StatelessWidget {
-  final String title;
-  final String value;
-  final Color color;
-
-  const _MiniPanel({required this.title, required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        margin: const EdgeInsets.only(right: 10),
-        decoration: BoxDecoration(
-          color: color.withAlpha(26),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color)),
-          ],
-        ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openEntryForm,
+        backgroundColor: AppColors.ember,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add_business),
+        label: const Text('New Entry'),
       ),
     );
   }
 }
+
+// Removed sample static panels; values now come from Firestore streams in the UI.
 
 class _BookingCard extends StatelessWidget {
   final Booking booking;
 
   const _BookingCard({required this.booking});
 
+  Color get _statusColor {
+    if (booking.status == 'Pending') return AppColors.amber;
+    if (booking.status == 'Confirmed') return AppColors.mint;
+    return AppColors.sky;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-      margin: const EdgeInsets.only(bottom: 18),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const CircleAvatar(
-                  radius: 24,
-                  backgroundColor: Color(0xFFE8F8F5),
-                  child: Icon(Icons.person, color: Color(0xFF0B7E76)),
+    final statusColor = _statusColor;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(18),
+      decoration: AppTheme.softCard(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 25,
+                backgroundColor: statusColor.withValues(alpha: 0.16),
+                child: Icon(Icons.person, color: statusColor),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      booking.customerName,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      booking.vehicleName,
+                      style: const TextStyle(color: AppColors.muted),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(booking.customerName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 4),
-                      Text(booking.vehicleName, style: const TextStyle(color: Colors.black54)),
-                    ],
-                  ),
+              ),
+              Chip(
+                label: Text(booking.status),
+                backgroundColor: statusColor.withValues(alpha: 0.12),
+                labelStyle: TextStyle(
+                  color: statusColor,
+                  fontWeight: FontWeight.w800,
                 ),
-                Chip(
-                  label: Text(booking.status),
-                  backgroundColor: booking.status == 'Pending'
-                      ? Colors.orange.shade50
-                      : booking.status == 'Confirmed'
-                          ? Colors.green.shade50
-                          : Colors.blue.shade50,
-                  labelStyle: TextStyle(
-                    color: booking.status == 'Pending'
-                        ? Colors.orange.shade800
-                        : booking.status == 'Confirmed'
-                            ? Colors.green.shade800
-                            : Colors.blue.shade800,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                const Icon(Icons.calendar_month, size: 18, color: Colors.black54),
-                const SizedBox(width: 8),
-                Text(booking.rentalPeriod, style: const TextStyle(color: Colors.black54)),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Icon(Icons.currency_rupee, size: 18, color: Colors.black54),
-                const SizedBox(width: 8),
-                Text('${booking.totalAmount}', style: const TextStyle(color: Colors.black54)),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () {},
-                  child: const Text('Details'),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: () {},
-                  child: const Text('Update'),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Icon(
+                Icons.calendar_month,
+                size: 18,
+                color: AppColors.muted,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                booking.rentalPeriod,
+                style: const TextStyle(color: AppColors.muted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Icon(
+                Icons.currency_rupee,
+                size: 18,
+                color: AppColors.muted,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${booking.totalAmount}',
+                style: const TextStyle(color: AppColors.muted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(onPressed: () {}, child: const Text('Details')),
+              const SizedBox(width: 8),
+              ElevatedButton(onPressed: () {}, child: const Text('Update')),
+            ],
+          ),
+        ],
       ),
     );
   }

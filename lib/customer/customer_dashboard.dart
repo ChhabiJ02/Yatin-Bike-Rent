@@ -1,97 +1,137 @@
 import 'package:flutter/material.dart';
+
 import '../models/vehicle.dart';
+import '../services/rental_service.dart';
+import '../widgets/user_app_bar_title.dart';
+import '../theme/app_theme.dart';
+import '../widgets/app_settings_menu.dart';
 
 class CustomerDashboard extends StatelessWidget {
   const CustomerDashboard({super.key});
 
-  static const _vehicles = [
-    Vehicle(
-      id: 'v1',
-      name: 'City Cruiser',
-      type: 'Urban',
-      pricePerHour: 50,
-      pricePerDay: 300,
-      available: true,
-      description: 'Smooth ride for city streets with a comfortable seat.',
-    ),
-    Vehicle(
-      id: 'v2',
-      name: 'Mountain Rider',
-      type: 'MTB',
-      pricePerHour: 80,
-      pricePerDay: 500,
-      available: true,
-      description: 'Strong and reliable for off-road and rough terrain.',
-    ),
-    Vehicle(
-      id: 'v3',
-      name: 'Electric Assist',
-      type: 'E-Bike',
-      pricePerHour: 100,
-      pricePerDay: 650,
-      available: true,
-      description: 'Electric boost for easy rides with less effort.',
-    ),
-  ];
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Customer Dashboard'),
+        foregroundColor: Colors.white,
+        title: const UserAppBarTitle(fallbackTitle: 'Customer'),
         actions: [
           IconButton(onPressed: () {}, icon: const Icon(Icons.search)),
+          const AppSettingsMenu(),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(22),
-              decoration: BoxDecoration(
-                color: Colors.teal.shade700,
-                borderRadius: BorderRadius.circular(26),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.teal.shade700.withOpacity(0.18),
-                    blurRadius: 22,
-                    offset: const Offset(0, 12),
+      body: Container(
+        decoration: const BoxDecoration(gradient: AppColors.pageGradient),
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: AppColors.heroGradient,
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.ember.withValues(alpha: 0.24),
+                      blurRadius: 28,
+                      offset: const Offset(0, 16),
+                    ),
+                  ],
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.electric_bike, color: Colors.white, size: 42),
+                    SizedBox(height: 18),
+                    Text(
+                      'Find your next ride',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      'Compare bikes, prices, and availability for a perfect trip.',
+                      style: TextStyle(color: Colors.white, height: 1.5),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  const Expanded(
+                    child: _OverviewCard(
+                      title: 'Popular',
+                      value: '88%',
+                      icon: Icons.trending_up,
+                      color: AppColors.amber,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: StreamBuilder(
+                      stream: RentalService.vehiclesStream(),
+                      builder: (context, snapshot) {
+                        final docs = snapshot.data?.docs ?? [];
+                        final available = docs.where((d) => (d.data()['available'] as bool?) == true).length;
+                        return _OverviewCard(
+                          title: 'Available',
+                          value: '$available',
+                          icon: Icons.verified_outlined,
+                          color: AppColors.mint,
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
-                    'Find your next ride',
-                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
-                  SizedBox(height: 10),
-                  Text(
-                    'Compare bikes, prices, and availability for a perfect trip.',
-                    style: TextStyle(color: Colors.white70, height: 1.5),
-                  ),
-                ],
+              const SizedBox(height: 24),
+              const Text(
+                'Available Vehicles',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
               ),
-            ),
-            const SizedBox(height: 22),
-            Row(
-              children: const [
-                Expanded(child: _OverviewCard(title: 'Popular', value: '88%')), 
-                SizedBox(width: 16),
-                Expanded(child: _OverviewCard(title: 'Available', value: '24')), 
-              ],
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Available Vehicles',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            ..._vehicles.map((vehicle) => _VehicleCard(vehicle: vehicle)),
-          ],
+              const SizedBox(height: 12),
+              StreamBuilder(
+                stream: RentalService.vehiclesStream(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: Padding(padding: EdgeInsets.all(12), child: SizedBox(height:24,width:24,child:CircularProgressIndicator(strokeWidth:2.5))));
+                  }
+                  final docs = snapshot.data?.docs ?? [];
+                  if (docs.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Text('No vehicles available.', style: TextStyle(color: AppColors.muted)),
+                    );
+                  }
+                  return Column(
+                    children: docs.map((doc) {
+                      final data = doc.data();
+                      final vehicle = Vehicle(
+                        id: doc.id,
+                        name: (data['name'] as String?) ?? 'Vehicle',
+                        type: (data['type'] as String?) ?? '',
+                        pricePerHour: (data['hourlyRate'] as int?) ?? (data['pricePerHour'] as int?) ?? 0,
+                        pricePerDay: (data['dailyRate'] as int?) ?? (data['pricePerDay'] as int?) ?? 0,
+                        available: (data['available'] as bool?) ?? true,
+                        description: (data['description'] as String?) ?? '',
+                      );
+                      return _VehicleCard(vehicle: vehicle);
+                    }).toList(),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -101,30 +141,36 @@ class CustomerDashboard extends StatelessWidget {
 class _OverviewCard extends StatelessWidget {
   final String title;
   final String value;
+  final IconData icon;
+  final Color color;
 
-  const _OverviewCard({required this.title, required this.value});
+  const _OverviewCard({
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
+      decoration: AppTheme.softCard(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(color: Colors.black54)),
-          const SizedBox(height: 10),
-          Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          Icon(icon, color: color, size: 26),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              color: AppColors.ink,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(title, style: const TextStyle(color: AppColors.muted)),
         ],
       ),
     );
@@ -138,74 +184,113 @@ class _VehicleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 18),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Container(
-                  height: 72,
-                  width: 72,
-                  decoration: BoxDecoration(
-                    color: Colors.teal.shade50,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: const Icon(Icons.pedal_bike, size: 34, color: Colors.teal),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(vehicle.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 6),
-                      Text(vehicle.type, style: const TextStyle(color: Colors.black54)),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(18),
+      decoration: AppTheme.softCard(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                height: 72,
+                width: 72,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppColors.mint.withValues(alpha: 0.18),
+                      AppColors.sky.withValues(alpha: 0.14),
                     ],
                   ),
+                  borderRadius: BorderRadius.circular(20),
                 ),
-                Chip(
-                  label: Text(vehicle.available ? 'Available' : 'Booked'),
-                  backgroundColor: vehicle.available ? Colors.green.shade50 : Colors.red.shade50,
-                  labelStyle: TextStyle(color: vehicle.available ? Colors.green.shade700 : Colors.red.shade700),
+                child: const Icon(
+                  Icons.pedal_bike,
+                  size: 34,
+                  color: AppColors.mint,
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(vehicle.description, style: const TextStyle(color: Colors.black87, height: 1.4)),
-            const SizedBox(height: 14),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('₹${vehicle.pricePerHour}/hr', style: const TextStyle(fontWeight: FontWeight.bold)),
-                    Text('₹${vehicle.pricePerDay}/day', style: const TextStyle(color: Colors.black54)),
+                    Text(
+                      vehicle.name,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      vehicle.type,
+                      style: const TextStyle(color: AppColors.muted),
+                    ),
                   ],
                 ),
-                ElevatedButton(
-                  onPressed: vehicle.available
-                      ? () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('${vehicle.name} booked successfully!')),
-                          );
-                        }
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  ),
-                  child: const Text('Book Now'),
+              ),
+              Chip(
+                label: Text(vehicle.available ? 'Available' : 'Booked'),
+                backgroundColor: vehicle.available
+                    ? AppColors.mint.withValues(alpha: 0.12)
+                    : Colors.red.shade50,
+                labelStyle: TextStyle(
+                  color: vehicle.available
+                      ? AppColors.mint
+                      : Colors.red.shade700,
+                  fontWeight: FontWeight.w800,
                 ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            vehicle.description,
+            style: const TextStyle(color: AppColors.ink, height: 1.45),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Rs ${vehicle.pricePerHour}/hr',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                  Text(
+                    'Rs ${vehicle.pricePerDay}/day',
+                    style: const TextStyle(color: AppColors.muted),
+                  ),
+                ],
+              ),
+              ElevatedButton.icon(
+                onPressed: vehicle.available
+                    ? () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              '${vehicle.name} booked successfully!',
+                            ),
+                          ),
+                        );
+                      }
+                    : null,
+                icon: const Icon(Icons.arrow_forward),
+                label: const Text('Book'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

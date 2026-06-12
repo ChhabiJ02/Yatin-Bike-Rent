@@ -1,8 +1,8 @@
-﻿import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-
 import 'screens/splash_screen.dart';
+import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,33 +18,7 @@ class YatinBikeRentApp extends StatelessWidget {
     return MaterialApp(
       title: 'Yatin Bike Rent',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
-        scaffoldBackgroundColor: const Color(0xFFF4F7FA),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide.none,
-          ),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.teal.shade700,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            padding: const EdgeInsets.symmetric(vertical: 18),
-          ),
-        ),
-        cardTheme: CardThemeData(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-          elevation: 6,
-          margin: const EdgeInsets.symmetric(vertical: 10),
-        ),
-      ),
+      theme: AppTheme.light,
       home: const SplashScreen(),
     );
   }
@@ -101,10 +75,7 @@ class _BikeRentHomePageState extends State<BikeRentHomePage> {
   int _selectedTab = 0;
 
   Future<void> addBike() async {
-
-    var url = Uri.parse(
-      "http://localhost/bike_api/add_bike.php",
-    );
+    var url = Uri.parse("http://localhost/bike_api/add_bike.php");
 
     await http.post(
       url,
@@ -134,17 +105,12 @@ class _BikeRentHomePageState extends State<BikeRentHomePage> {
   @override
   Widget build(BuildContext context) {
     final screens = [
-      BikesScreen(
-        bikes: _bikes,
-        onBook: _addBooking,
-      ),
+      BikesScreen(bikes: _bikes, onBook: _addBooking),
       BookingsScreen(bookings: _bookings),
     ];
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Bike Rent Demo'),
-      ),
+      appBar: AppBar(title: const Text('Bike Rent Demo')),
       body: screens[_selectedTab],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedTab,
@@ -222,15 +188,23 @@ class BikeCard extends StatelessWidget {
                     children: [
                       Text(
                         bike.name,
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                      Text(bike.type, style: const TextStyle(color: Colors.black54)),
+                      Text(
+                        bike.type,
+                        style: const TextStyle(color: Colors.black54),
+                      ),
                     ],
                   ),
                 ),
                 Chip(
                   label: Text(bike.available ? 'Available' : 'Unavailable'),
-                  backgroundColor: bike.available ? Colors.green.shade100 : Colors.red.shade100,
+                  backgroundColor: bike.available
+                      ? Colors.green.shade100
+                      : Colors.red.shade100,
                 ),
               ],
             ),
@@ -240,10 +214,16 @@ class BikeCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text('Hour: ₹${bike.pricePerHour}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  child: Text(
+                    'Hour: ₹${bike.pricePerHour}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
                 Expanded(
-                  child: Text('Day: ₹${bike.pricePerDay}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  child: Text(
+                    'Day: ₹${bike.pricePerDay}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
               ],
             ),
@@ -254,16 +234,20 @@ class BikeCard extends StatelessWidget {
                   onPressed: bike.available
                       ? () async {
                           final messenger = ScaffoldMessenger.of(context);
-                          final result = await Navigator.of(context).push<Booking>(
-                            MaterialPageRoute(
-                              builder: (context) => BikeBookingPage(bike: bike),
-                            ),
-                          );
+                          final result = await Navigator.of(context)
+                              .push<Booking>(
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      BikeBookingPage(bike: bike),
+                                ),
+                              );
                           if (result != null) {
                             onBook(result);
                             messenger.showSnackBar(
                               SnackBar(
-                                content: Text('Booked ${bike.name} successfully!'),
+                                content: Text(
+                                  'Booked ${bike.name} successfully!',
+                                ),
                               ),
                             );
                           }
@@ -280,7 +264,9 @@ class BikeCard extends StatelessWidget {
                       builder: (context) {
                         return AlertDialog(
                           title: Text(bike.name),
-                          content: Text('Rent per hour ₹${bike.pricePerHour}\nRent per day ₹${bike.pricePerDay}'),
+                          content: Text(
+                            'Rent per hour ₹${bike.pricePerHour}\nRent per day ₹${bike.pricePerDay}',
+                          ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.of(context).pop(),
@@ -339,9 +325,7 @@ class _BikeBookingPageState extends State<BikeBookingPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Book ${widget.bike.name}'),
-      ),
+      appBar: AppBar(title: Text('Book ${widget.bike.name}')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -354,7 +338,10 @@ class _BikeBookingPageState extends State<BikeBookingPage> {
             const SizedBox(height: 8),
             Text(widget.bike.description),
             const SizedBox(height: 24),
-            const Text('Choose rental type', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            const Text(
+              'Choose rental type',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 8),
             ToggleButtons(
               isSelected: [_rentType == 'Hour', _rentType == 'Day'],
@@ -379,7 +366,10 @@ class _BikeBookingPageState extends State<BikeBookingPage> {
             const SizedBox(height: 24),
             Row(
               children: [
-                const Text('Duration', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                const Text(
+                  'Duration',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
                 const Spacer(),
                 Text('$_duration ${_rentType.toLowerCase()}(s)'),
               ],
@@ -399,10 +389,15 @@ class _BikeBookingPageState extends State<BikeBookingPage> {
             const SizedBox(height: 24),
             TextButton(
               onPressed: _selectDate,
-              child: Text('Pickup date: ${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}'),
+              child: Text(
+                'Pickup date: ${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
+              ),
             ),
             const SizedBox(height: 24),
-            Text('Total cost: ₹$totalCost', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text(
+              'Total cost: ₹$totalCost',
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: () {
@@ -461,14 +456,24 @@ class BookingsScreen extends StatelessWidget {
               children: [
                 Text(
                   booking.bike.name,
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 6),
-                Text('${booking.rentType} booking for ${booking.duration} ${booking.rentType.toLowerCase()}(s)'),
+                Text(
+                  '${booking.rentType} booking for ${booking.duration} ${booking.rentType.toLowerCase()}(s)',
+                ),
                 const SizedBox(height: 6),
-                Text('Pickup date: ${booking.date.day}/${booking.date.month}/${booking.date.year}'),
+                Text(
+                  'Pickup date: ${booking.date.day}/${booking.date.month}/${booking.date.year}',
+                ),
                 const SizedBox(height: 6),
-                Text('Total paid: ₹${booking.totalCost}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text(
+                  'Total paid: ₹${booking.totalCost}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
               ],
             ),
           ),

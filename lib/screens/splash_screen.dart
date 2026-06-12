@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import '../admin/admin_dashboard.dart';
+import '../customer/customer_dashboard.dart';
+import '../services/auth_service.dart';
+import '../staff/staff_dashboard.dart';
 import 'login_screen.dart';
+import '../theme/app_theme.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -8,7 +13,8 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen>
+    with TickerProviderStateMixin {
   late AnimationController _logoController;
   late AnimationController _textController;
   late AnimationController _loadingController;
@@ -19,7 +25,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   @override
   void initState() {
     super.initState();
-    print('SplashScreen: initState');
 
     // Logo animation controller
     _logoController = AnimationController(
@@ -41,9 +46,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       vsync: this,
     );
 
-    _textOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _textController, curve: Curves.easeIn),
-    );
+    _textOpacity = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _textController, curve: Curves.easeIn));
 
     // Loading animation controller
     _loadingController = AnimationController(
@@ -57,15 +63,36 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       if (mounted) _textController.forward();
     });
 
-    // Navigate to login after 3.5 seconds
-    Future.delayed(const Duration(seconds: 4), () {
-      if (mounted) {
-        print('SplashScreen: navigating to LoginScreen');
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        );
-      }
-    });
+    Future.delayed(const Duration(seconds: 4), _routeAfterSplash);
+  }
+
+  Future<void> _routeAfterSplash() async {
+    if (!mounted) return;
+
+    final user = AuthService.currentUser;
+    if (user == null || !AuthService.isCurrentSessionActive()) {
+      await AuthService.signOut();
+      if (!mounted) return;
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
+      return;
+    }
+
+    final role = await AuthService.getUserRole(user.uid);
+    Widget destination;
+    if (role == 'Admin') {
+      destination = const AdminDashboard();
+    } else if (role == 'Staff') {
+      destination = const StaffDashboard();
+    } else {
+      destination = const CustomerDashboard();
+    }
+
+    if (!mounted) return;
+    Navigator.of(
+      context,
+    ).pushReplacement(MaterialPageRoute(builder: (_) => destination));
   }
 
   @override
@@ -80,18 +107,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              const Color(0xFF1a1a2e),
-              Colors.orange.shade900,
-              Colors.orange.shade800,
-            ],
-            stops: const [0, 0.5, 1],
-          ),
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(gradient: AppColors.splashGradient),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -102,38 +120,26 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                 child: RotationTransition(
                   turns: _logoRotate,
                   child: Container(
-                    width: 220,
-                    height: 220,
+                    width: 270,
+                    height: 270,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.orange.withOpacity(0.4),
+                          color: AppColors.ember.withValues(alpha: 0.42),
                           blurRadius: 30,
                           spreadRadius: 10,
                         ),
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
+                          color: Colors.black.withValues(alpha: 0.3),
                           blurRadius: 20,
                           spreadRadius: 5,
                         ),
                       ],
                     ),
-                    child: ClipOval(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                        padding: const EdgeInsets.all(8),
-child: Image.asset(
-                          'assets/logos/png/logo1.png',
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) {
-                            return const Center(child: FlutterLogo(size: 140));
-                          },
-                        ),
-                      ),
+                    child: Image.asset(
+                      'assets/logos/png/logo1.png',
+                      fit: BoxFit.contain,
                     ),
                   ),
                 ),
@@ -154,7 +160,7 @@ child: Image.asset(
                         shadows: [
                           Shadow(
                             blurRadius: 15,
-                            color: Colors.black.withOpacity(0.5),
+                            color: Colors.black.withValues(alpha: 0.5),
                             offset: const Offset(2, 4),
                           ),
                         ],
@@ -166,12 +172,12 @@ child: Image.asset(
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w700,
-                        color: Colors.orange.shade100,
+                        color: AppColors.amber,
                         letterSpacing: 3,
                         shadows: [
                           Shadow(
                             blurRadius: 15,
-                            color: Colors.black.withOpacity(0.5),
+                            color: Colors.black.withValues(alpha: 0.5),
                             offset: const Offset(2, 4),
                           ),
                         ],
@@ -182,11 +188,11 @@ child: Image.asset(
                       width: 60,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.orange.shade500,
+                        gradient: AppColors.heroGradient,
                         borderRadius: BorderRadius.circular(2),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.orange.withOpacity(0.5),
+                            color: Colors.orange.withValues(alpha: 0.5),
                             blurRadius: 8,
                           ),
                         ],
@@ -202,15 +208,17 @@ child: Image.asset(
                 child: Column(
                   children: [
                     RotationTransition(
-                      turns: Tween(begin: 0.0, end: 1.0)
-                          .animate(_loadingController),
+                      turns: Tween(
+                        begin: 0.0,
+                        end: 1.0,
+                      ).animate(_loadingController),
                       child: Container(
                         width: 50,
                         height: 50,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.3),
+                            color: Colors.white.withValues(alpha: 0.3),
                             width: 3,
                           ),
                         ),
@@ -229,7 +237,7 @@ child: Image.asset(
                     Text(
                       'Loading...',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.8),
+                        color: Colors.white.withValues(alpha: 0.8),
                         fontSize: 14,
                         letterSpacing: 2,
                       ),

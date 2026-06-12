@@ -1,6 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../admin/transportation_form.dart';
+import '../theme/app_theme.dart';
+
 class ChallanEntry {
   final String fyear;
   final String cCode;
@@ -11,7 +14,7 @@ class ChallanEntry {
   final String landmark;
   final String area;
   final String city;
-  final String pinCode;
+  final String pincode;
   final String smsPhone;
   final String reference;
   final String aadharNo;
@@ -38,7 +41,7 @@ class ChallanEntry {
     required this.landmark,
     required this.area,
     required this.city,
-    required this.pinCode,
+    required this.pincode,
     required this.smsPhone,
     required this.reference,
     required this.aadharNo,
@@ -67,7 +70,7 @@ class ChallanEntry {
       'landmark': landmark,
       'area': area,
       'city': city,
-      'pinCode': pinCode,
+      'pincode': pincode,
       'smsPhone': smsPhone,
       'reference': reference,
       'aadharNo': aadharNo,
@@ -89,8 +92,8 @@ class ChallanEntry {
 }
 
 class ChallanForm {
-  static final CollectionReference<Map<String, dynamic>> _challansCollection =
-      FirebaseFirestore.instance.collection('challans');
+  static final CollectionReference<Map<String, dynamic>> _customersCollection =
+      FirebaseFirestore.instance.collection('customers');
 
   static Future<bool> show(BuildContext context) async {
     final result = await showModalBottomSheet<bool>(
@@ -103,6 +106,13 @@ class ChallanForm {
     );
     return result ?? false;
   }
+}
+
+class _CustomerCodeResult {
+  final String prefix;
+  final int maxId;
+
+  _CustomerCodeResult(this.prefix, this.maxId);
 }
 
 class _ChallanFormWidget extends StatefulWidget {
@@ -122,7 +132,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
   final areaController = TextEditingController();
   final cityController = TextEditingController();
   final address2Controller = TextEditingController();
-  final pinCodeController = TextEditingController();
+  final pincodeController = TextEditingController();
   final smsPhoneController = TextEditingController();
   final referenceController = TextEditingController();
   final aadharController = TextEditingController();
@@ -140,6 +150,196 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
   final helmetController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    final fyear = _currentFinancialYear();
+    fyearController.text = fyear;
+    customerCodeController.text = '';
+    _loadNextCustomerCode(fyear);
+  }
+
+  String _currentFinancialYear() {
+    final now = DateTime.now();
+    final currentYear = now.year;
+    final fiscalYearStart = DateTime(currentYear, 4, 1);
+    if (now.isBefore(fiscalYearStart)) {
+      return '${currentYear - 1}-$currentYear';
+    }
+    return '$currentYear-${currentYear + 1}';
+  }
+
+  int? _extractNumericSuffix(String code) {
+    // Handle codes like 26260001 or older 2627006 forms.
+    final exactMatch = RegExp(r'^\d{4}0+(\d+)$').firstMatch(code);
+    if (exactMatch != null) {
+      return int.tryParse(exactMatch.group(1)!);
+    }
+    if (code.length > 6) {
+      return int.tryParse(code.substring(6));
+    }
+    return null;
+  }
+
+  String _formatCustomerCode(String fyear, int id) {
+    // Expecting fyear like '2026-2027'. Produce short form: '26270008'
+    // Format: YYYYIIII where YY = last two digits of start year, YY = last two digits of end year,
+    // IIII = 4-digit zero-padded incremental ID (ensures 8-digit format).
+    try {
+      final parts = fyear.split(RegExp(r'[^0-9]+')).where((s) => s.isNotEmpty).toList();
+      int start = DateTime.now().year;
+      int end = start + 1;
+      if (parts.length >= 2) {
+        start = int.tryParse(parts[0]) ?? start;
+        end = int.tryParse(parts[1]) ?? (start + 1);
+      }
+      final s2 = (start % 100).toString().padLeft(2, '0');
+      final e2 = (end % 100).toString().padLeft(2, '0');
+      final idStr = id.toString().padLeft(4, '0');
+      return '$s2$e2$idStr';
+    } catch (_) {
+      return id.toString().padLeft(4, '0');
+    }
+  }
+
+  String _formatCustomerCodeWithPrefix(String prefix, int id) {
+    return '${prefix}${id.toString().padLeft(4, '0')}';
+  }
+
+  Future<_CustomerCodeResult> _findMaxCustomerIdForFyear(String fyear) async {
+    final currentPrefix = _codePrefix(fyear);
+    int maxId = 0;
+
+    // 1) Scan customers for the same financial year and check both cCode field and doc.id
+    final customersForYear = await ChallanForm._customersCollection
+        .where('fyear', isEqualTo: fyear)
+        .get();
+    for (final doc in customersForYear.docs) {
+      final data = doc.data();
+      final codeField = data['cCode'] as String?;
+      if (codeField != null && codeField.startsWith(currentPrefix)) {
+        final s = _extractNumericSuffix(codeField);
+        if (s != null && s > maxId) maxId = s;
+      }
+      final idCode = doc.id;
+      if (idCode.startsWith(currentPrefix)) {
+        final s = _extractNumericSuffix(idCode);
+        if (s != null && s > maxId) maxId = s;
+      }
+    }
+
+    // 2) Scan all customers (in case some codes were saved under different years)
+    final allCustomers = await ChallanForm._customersCollection.get();
+    for (final doc in allCustomers.docs) {
+      final data = doc.data();
+      final codeField = data['cCode'] as String?;
+      if (codeField != null && codeField.startsWith(currentPrefix)) {
+        final s = _extractNumericSuffix(codeField);
+        if (s != null && s > maxId) maxId = s;
+      }
+      final idCode = doc.id;
+      if (idCode.startsWith(currentPrefix)) {
+        final s = _extractNumericSuffix(idCode);
+        if (s != null && s > maxId) maxId = s;
+      }
+    }
+
+    // 3) Scan challans for the same financial year and check both cCode field and document id
+    final challansForYear = await FirebaseFirestore.instance
+        .collection('challans')
+        .where('fyear', isEqualTo: fyear)
+        .get();
+    for (final doc in challansForYear.docs) {
+      final data = doc.data();
+      final codeField = data['cCode'] as String?;
+      if (codeField != null && codeField.startsWith(currentPrefix)) {
+        final s = _extractNumericSuffix(codeField);
+        if (s != null && s > maxId) maxId = s;
+      }
+      final idCode = doc.id;
+      if (idCode.startsWith(currentPrefix)) {
+        final s = _extractNumericSuffix(idCode);
+        if (s != null && s > maxId) maxId = s;
+      }
+    }
+
+    // 4) Scan all challans (in case some codes were saved under different years)
+    final allChallans = await FirebaseFirestore.instance.collection('challans').get();
+    for (final doc in allChallans.docs) {
+      final data = doc.data();
+      final codeField = data['cCode'] as String?;
+      if (codeField != null && codeField.startsWith(currentPrefix)) {
+        final s = _extractNumericSuffix(codeField);
+        if (s != null && s > maxId) maxId = s;
+      }
+      final idCode = doc.id;
+      if (idCode.startsWith(currentPrefix)) {
+        final s = _extractNumericSuffix(idCode);
+        if (s != null && s > maxId) maxId = s;
+      }
+    }
+
+    debugPrint('findMaxCustomerIdForFyear($fyear) -> prefix=$currentPrefix maxId=$maxId');
+    if (maxId > 0) {
+      return _CustomerCodeResult(currentPrefix, maxId);
+    }
+
+    int fallbackMaxId = 0;
+    String fallbackPrefix = currentPrefix;
+
+    final allCustomersFromCustomers = await FirebaseFirestore.instance.collection('customers').get();
+    for (final doc in allCustomersFromCustomers.docs) {
+      final code = (doc.data()['cCode'] as String?) ?? doc.id;
+      final s = _extractNumericSuffix(code);
+      if (s != null && s > fallbackMaxId) {
+        fallbackMaxId = s;
+        fallbackPrefix = code.length >= 4 ? code.substring(0, 4) : code;
+      }
+    }
+
+    final fallbackChallans = await FirebaseFirestore.instance.collection('challans').get();
+    for (final doc in fallbackChallans.docs) {
+      final code = (doc.data()['cCode'] as String?) ?? doc.id;
+      final s = _extractNumericSuffix(code);
+      if (s != null && s > fallbackMaxId) {
+        fallbackMaxId = s;
+        fallbackPrefix = code.length >= 4 ? code.substring(0, 4) : code;
+      }
+    }
+
+    debugPrint('Fallback prefix=$fallbackPrefix fallbackMaxId=$fallbackMaxId');
+    return _CustomerCodeResult(fallbackPrefix, fallbackMaxId);
+  }
+  
+
+  String _codePrefix(String fyear) {
+    final parts = fyear.split(RegExp(r'[^0-9]+')).where((s) => s.isNotEmpty).toList();
+    int start = DateTime.now().year;
+    int end = start + 1;
+    if (parts.length >= 2) {
+      start = int.tryParse(parts[0]) ?? start;
+      end = int.tryParse(parts[1]) ?? (start + 1);
+    }
+    final s2 = (start % 100).toString().padLeft(2, '0');
+    final e2 = (end % 100).toString().padLeft(2, '0');
+    return '$s2$e2';
+  }
+
+  Future<void> _loadNextCustomerCode(String fyear) async {
+    try {
+      final prefixResult = await _findMaxCustomerIdForFyear(fyear);
+      final nextId = prefixResult.maxId + 1;
+      final nextCode = _formatCustomerCodeWithPrefix(prefixResult.prefix, nextId);
+      debugPrint('Next customer code for $fyear: prefix=${prefixResult.prefix} maxId=${prefixResult.maxId} nextCode=$nextCode');
+      if (!mounted) return;
+      customerCodeController.text = nextCode;
+    } catch (error) {
+      debugPrint('Failed to load next customer code: $error');
+      if (!mounted) return;
+      customerCodeController.text = _formatCustomerCode(fyear, 1);
+    }
+  }
+
+  @override
   void dispose() {
     customerCodeController.dispose();
     dateController.dispose();
@@ -150,7 +350,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
     areaController.dispose();
     cityController.dispose();
     address2Controller.dispose();
-    pinCodeController.dispose();
+    pincodeController.dispose();
     smsPhoneController.dispose();
     referenceController.dispose();
     aadharController.dispose();
@@ -169,22 +369,47 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
     super.dispose();
   }
 
-  Widget _buildTextField(String label, TextEditingController controller, {int maxLines = 1}) {
+  Widget _buildTextField(
+    String label,
+    TextEditingController controller, {
+    int maxLines = 1,
+    bool readOnly = false,
+    VoidCallback? onTap,
+  }) {
     return TextFormField(
       controller: controller,
       maxLines: maxLines,
+      readOnly: readOnly,
+      onTap: onTap,
       decoration: InputDecoration(
         labelText: label,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 16,
+        ),
       ),
     );
   }
 
   Future<void> _saveChallanEntry(ChallanEntry entry) async {
-    await ChallanForm._challansCollection.add(entry.toMap());
+    final data = entry.toMap();
+    
+    // Parse sDate (YYYY-MM-DD format) to DateTime, then convert to Firestore Timestamp
+    try {
+      if (entry.sDate.isNotEmpty) {
+        final dateTime = DateTime.parse(entry.sDate);
+        data['sDate'] = Timestamp.fromDate(dateTime);
+      }
+    } catch (e) {
+      debugPrint('Failed to parse date: $e');
+    }
+    
+    await ChallanForm._customersCollection.doc(entry.cCode).set(data);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved to Firebase successfully.')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Saved to Firebase successfully.')),
+    );
   }
 
   @override
@@ -197,8 +422,8 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
       builder: (context, scrollController) {
         return Container(
           decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            color: AppColors.paper,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
           ),
           child: Padding(
             padding: EdgeInsets.only(
@@ -215,27 +440,78 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                   Container(
                     width: 40,
                     height: 5,
-                    margin: const EdgeInsets.only(bottom: 16),
+                    margin: const EdgeInsets.only(bottom: 18),
                     decoration: BoxDecoration(
                       color: Colors.grey.shade300,
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
-                  const Text(
-                    'Challan Entry',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Fill in the customer and booking details.',
-                    style: TextStyle(color: Colors.black54, height: 1.4),
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      gradient: AppColors.heroGradient,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.edit_document,
+                          color: Colors.white,
+                          size: 34,
+                        ),
+                        SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Challan Entry',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              SizedBox(height: 6),
+                              Text(
+                                'Fill in customer and booking details.',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 18),
-                  _buildTextField('Cust. Code', customerCodeController),
+                  _buildTextField(
+                    'Cust. Code',
+                    customerCodeController,
+                    readOnly: true,
+                  ),
                   const SizedBox(height: 12),
-                  _buildTextField('Date', dateController),
+                  _buildTextField(
+                    'Date',
+                    dateController,
+                    readOnly: true,
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.now(),
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
+                      if (picked != null) {
+                        dateController.text =
+                            '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+                      }
+                    },
+                  ),
                   const SizedBox(height: 12),
-                  _buildTextField('Fyear', fyearController),
+                  _buildTextField('Fyear', fyearController, readOnly: true),
                   const SizedBox(height: 12),
                   _buildTextField('Party\'s Name', partyNameController),
                   const SizedBox(height: 12),
@@ -253,21 +529,35 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  _buildTextField('Pincode', pinCodeController),
+                  _buildTextField('Pincode', pincodeController),
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(child: _buildTextField('SMS Phone', smsPhoneController)),
+                      Expanded(
+                        child: _buildTextField('SMS Phone', smsPhoneController),
+                      ),
                       const SizedBox(width: 12),
-                      Expanded(child: _buildTextField('Reference', referenceController)),
+                      Expanded(
+                        child: _buildTextField(
+                          'Reference',
+                          referenceController,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(child: _buildTextField('Aadhar No.', aadharController)),
+                      Expanded(
+                        child: _buildTextField('Aadhar No.', aadharController),
+                      ),
                       const SizedBox(width: 12),
-                      Expanded(child: _buildTextField('Licence No.', licenceController)),
+                      Expanded(
+                        child: _buildTextField(
+                          'Licence No.',
+                          licenceController,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -275,20 +565,36 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                   const SizedBox(height: 20),
                   const Text(
                     'Booking Information',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.ink,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(child: _buildTextField('Fine Rs.', fineController)),
+                      Expanded(
+                        child: _buildTextField('Fine Rs.', fineController),
+                      ),
                       const SizedBox(width: 12),
-                      Expanded(child: _buildTextField('Return Date', returnDateController)),
+                      Expanded(
+                        child: _buildTextField(
+                          'Return Date',
+                          returnDateController,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(child: _buildTextField('Vehicle Name', vehicleController)),
+                      Expanded(
+                        child: _buildTextField(
+                          'Vehicle Name',
+                          vehicleController,
+                        ),
+                      ),
                       const SizedBox(width: 12),
                       Expanded(child: _buildTextField('Days', daysController)),
                     ],
@@ -298,23 +604,36 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                     children: [
                       Expanded(child: _buildTextField('Rate', rateController)),
                       const SizedBox(width: 12),
-                      Expanded(child: _buildTextField('Bill Amt', billAmountController)),
+                      Expanded(
+                        child: _buildTextField(
+                          'Bill Amt',
+                          billAmountController,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(child: _buildTextField('Pickup Rs.', pickupController)),
+                      Expanded(
+                        child: _buildTextField('Pickup Rs.', pickupController),
+                      ),
                       const SizedBox(width: 12),
-                      Expanded(child: _buildTextField('Drop Rs.', dropController)),
+                      Expanded(
+                        child: _buildTextField('Drop Rs.', dropController),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(child: _buildTextField('Extra P.', extraController)),
+                      Expanded(
+                        child: _buildTextField('Extra P.', extraController),
+                      ),
                       const SizedBox(width: 12),
-                      Expanded(child: _buildTextField('Helmet', helmetController)),
+                      Expanded(
+                        child: _buildTextField('Helmet', helmetController),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -331,7 +650,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                         landmark: landmarkController.text.trim(),
                         area: areaController.text.trim(),
                         city: cityController.text.trim(),
-                        pinCode: pinCodeController.text.trim(),
+                        pincode: pincodeController.text.trim(),
                         smsPhone: smsPhoneController.text.trim(),
                         reference: referenceController.text.trim(),
                         aadharNo: aadharController.text.trim(),
@@ -355,9 +674,33 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                     },
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                     ),
-                    child: const Text('Save Entry', style: TextStyle(fontSize: 16)),
+                    child: const Text(
+                      'Save Entry',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const TransportationForm(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.local_shipping),
+                    label: const Text('Transportation Details'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: AppColors.sky,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 16),
                 ],

@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../services/rental_service.dart';
+import '../services/auth_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/app_settings_menu.dart';
+import '../admin/transportation_form.dart';
+import '../widgets/user_app_bar_title.dart';
+
 class AdminDashboard extends StatelessWidget {
   const AdminDashboard({super.key});
 
@@ -8,112 +15,174 @@ class AdminDashboard extends StatelessWidget {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text('Admin Dashboard'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_none),
-            onPressed: () {},
-          ),
-        ],
+        foregroundColor: Colors.white,
+        title: const UserAppBarTitle(fallbackTitle: 'Admin'),
+        actions: const [AppSettingsMenu()],
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF06B89F), Color(0xFF38A99A), Color(0xFFF4F7FA)],
-          ),
-        ),
+        decoration: const BoxDecoration(gradient: AppColors.pageGradient),
         child: SafeArea(
-          child: Padding(
+          child: ListView(
             padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(28),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.08),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        height: 64,
-                        width: 64,
-                        decoration: BoxDecoration(
-                          color: Colors.teal.shade700,
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: const Icon(Icons.dashboard_customize, color: Colors.white, size: 32),
-                      ),
-                      const SizedBox(width: 18),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text(
-                              'Welcome Back, Admin',
-                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                            ),
-                            SizedBox(height: 6),
-                            Text(
-                              'Manage bookings and vehicle fleet with a single tap.',
-                              style: TextStyle(color: Colors.black54),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 22),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: const [
-                    _StatsCard(title: 'Vehicles', value: '68', icon: Icons.pedal_bike),
-                    _StatsCard(title: 'Bookings', value: '142', icon: Icons.receipt_long),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  gradient: AppColors.heroGradient,
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.ember.withValues(alpha: 0.24),
+                      blurRadius: 28,
+                      offset: const Offset(0, 16),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 18),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: const [
-                    _StatsCard(title: 'Staff', value: '12', icon: Icons.group),
-                    _StatsCard(title: 'Revenue', value: '₹92K', icon: Icons.currency_rupee),
+                child: Row(
+                  children: [
+                    Container(
+                      height: 66,
+                      width: 66,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.28),
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.dashboard_customize,
+                        color: Colors.white,
+                        size: 34,
+                      ),
+                    ),
+                    const SizedBox(width: 18),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          StreamBuilder(
+                            stream: AuthService.currentUserProfileStream(),
+                            builder: (context, snapshot) {
+                              final data = snapshot.data?.data();
+                              final name = (data?['name'] as String?)?.trim();
+                              final display = name?.isNotEmpty == true ? 'Welcome Back, $name' : 'Welcome Back, Admin';
+                              return Text(
+                                display,
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                ),
+                              );
+                            },
+                          ),
+                          SizedBox(height: 6),
+                          const Text(
+                            'Control fleet, bookings, staff, and revenue from one sharp view.',
+                            style: TextStyle(color: Colors.white, height: 1.45),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 26),
-                const Text(
-                  'Quick Actions',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 14),
-                Expanded(
-                  child: GridView.count(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    childAspectRatio: 1.05,
-                    children: const [
-                      _AdminCard(title: 'Vehicles', icon: Icons.pedal_bike),
-                      _AdminCard(title: 'Bookings', icon: Icons.receipt_long),
-                      _AdminCard(title: 'Staff', icon: Icons.group),
-                      _AdminCard(title: 'Reports', icon: Icons.bar_chart),
-                    ],
+              ),
+              const SizedBox(height: 22),
+              const Row(
+                children: [
+                  _CountCard(
+                    title: 'Vehicles',
+                    collection: 'vehicles',
+                    icon: Icons.pedal_bike,
+                    color: AppColors.mint,
                   ),
+                  SizedBox(width: 14),
+                  _CountCard(
+                    title: 'Bookings',
+                    collection: 'bookings',
+                    icon: Icons.receipt_long,
+                    color: AppColors.sky,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const Row(
+                children: [
+                  _CountCard(
+                    title: 'Customers',
+                    collection: 'customers',
+                    icon: Icons.group,
+                    color: AppColors.amber,
+                  ),
+                  SizedBox(width: 14),
+                  _RevenueCard(
+                    title: 'Revenue',
+                    icon: Icons.currency_rupee,
+                    color: AppColors.ember,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 26),
+              const Text(
+                'Quick Actions',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 14),
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: 2,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+                childAspectRatio: 0.98,
+                children: [
+                  const _AdminCard(
+                    title: 'Vehicles',
+                    icon: Icons.pedal_bike,
+                    color: AppColors.mint,
+                  ),
+                  const _AdminCard(
+                    title: 'Bookings',
+                    icon: Icons.receipt_long,
+                    color: AppColors.sky,
+                  ),
+                  const _AdminCard(
+                    title: 'Staff',
+                    icon: Icons.group,
+                    color: AppColors.amber,
+                  ),
+                  const _AdminCard(
+                    title: 'Reports',
+                    icon: Icons.bar_chart,
+                    color: AppColors.ember,
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TransportationForm()));
+                    },
+                    child: const _AdminCard(
+                      title: 'Transportation',
+                      icon: Icons.local_shipping,
+                      color: AppColors.sky,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TransportationForm())),
+                icon: const Icon(Icons.local_shipping),
+                label: const Text('Transportation Details'),
+                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+              ),
+              const SizedBox(height: 26),
+              const _UserRoleManager(),
+            ],
           ),
         ),
       ),
@@ -121,37 +190,258 @@ class AdminDashboard extends StatelessWidget {
   }
 }
 
-class _StatsCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final IconData icon;
+class _UserRoleManager extends StatelessWidget {
+  const _UserRoleManager();
 
-  const _StatsCard({required this.title, required this.value, required this.icon});
+  static const _roles = ['Customer', 'Staff', 'Admin'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: AppTheme.softCard(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.manage_accounts, color: AppColors.ember),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'User Roles',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.ink,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Only admins can promote users to Staff or Admin.',
+            style: TextStyle(color: AppColors.muted),
+          ),
+          const SizedBox(height: 16),
+          StreamBuilder(
+            stream: AuthService.usersStream(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(18),
+                    child: SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    ),
+                  ),
+                );
+              }
+
+              if (snapshot.hasError) {
+                return const Text(
+                  'Could not load users.',
+                  style: TextStyle(color: Colors.red),
+                );
+              }
+
+              final users = snapshot.data?.docs ?? [];
+              if (users.isEmpty) {
+                return const Text(
+                  'No users registered yet.',
+                  style: TextStyle(color: AppColors.muted),
+                );
+              }
+
+              return Column(
+                children: users.map((doc) {
+                  final data = doc.data();
+                  final name = (data['name'] as String?)?.trim();
+                  final email = (data['email'] as String?)?.trim();
+                  final currentRole = data['role'] as String? ?? 'Customer';
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: AppColors.ember.withValues(alpha: 0.12),
+                          child: const Icon(
+                            Icons.person_outline,
+                            color: AppColors.ember,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                name?.isNotEmpty == true ? name! : 'User',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.ink,
+                                ),
+                              ),
+                              Text(
+                                email?.isNotEmpty == true ? email! : doc.id,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppColors.muted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        DropdownButton<String>(
+                          value: _roles.contains(currentRole)
+                              ? currentRole
+                              : 'Customer',
+                          underline: const SizedBox.shrink(),
+                          borderRadius: BorderRadius.circular(14),
+                          items: _roles
+                              .map(
+                                (role) => DropdownMenuItem(
+                                  value: role,
+                                  child: Text(role),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (role) async {
+                            if (role == null || role == currentRole) return;
+                            await AuthService.updateUserRole(
+                              uid: doc.id,
+                              role: role,
+                            );
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Role updated to $role.')),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CountCard extends StatelessWidget {
+  final String title;
+  final String collection;
+  final IconData icon;
+  final Color color;
+
+  const _CountCard({
+    required this.title,
+    required this.collection,
+    required this.icon,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 18,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
+        decoration: AppTheme.softCard(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: Colors.teal.shade700, size: 28),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(icon, color: color, size: 26),
+            ),
             const SizedBox(height: 16),
-            Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            Text(title, style: const TextStyle(color: Colors.black54)),
+            StreamBuilder(
+              stream: RentalService.countStream(collection),
+              builder: (context, snapshot) {
+                final value = snapshot.data?.docs.length ?? 0;
+                return Text(
+                  '$value',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.ink,
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 4),
+            Text(title, style: const TextStyle(color: AppColors.muted)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RevenueCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Color color;
+
+  const _RevenueCard({
+    required this.title,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: AppTheme.softCard(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(icon, color: color, size: 26),
+            ),
+            const SizedBox(height: 16),
+            StreamBuilder(
+              stream: RentalService.bookingsStream(),
+              builder: (context, snapshot) {
+                final total = snapshot.data?.docs.fold<int>(0, (sum, doc) {
+                      return sum + ((doc.data()['totalAmount'] as num?)?.toInt() ?? 0);
+                    }) ??
+                    0;
+                return Text(
+                  'Rs $total',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.ink,
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 4),
+            Text(title, style: const TextStyle(color: AppColors.muted)),
           ],
         ),
       ),
@@ -162,47 +452,47 @@ class _StatsCard extends StatelessWidget {
 class _AdminCard extends StatelessWidget {
   final String title;
   final IconData icon;
+  final Color color;
 
-  const _AdminCard({required this.title, required this.icon});
+  const _AdminCard({
+    required this.title,
+    required this.icon,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 20,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
+      decoration: AppTheme.softCard(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.teal.shade50,
-              borderRadius: BorderRadius.circular(16),
+              color: color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(18),
             ),
-            child: Icon(icon, size: 28, color: Colors.teal.shade700),
+            child: Icon(icon, size: 28, color: color),
           ),
-          const SizedBox(height: 20),
+          const Spacer(),
           Text(
             title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: AppColors.ink,
+            ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           const Text(
-            'Manage and review detailed data from one place.',
-            style: TextStyle(color: Colors.black54, height: 1.4),
+            'Manage detailed data from one place.',
+            style: TextStyle(color: AppColors.muted, height: 1.35),
           ),
         ],
       ),
     );
   }
 }
+
