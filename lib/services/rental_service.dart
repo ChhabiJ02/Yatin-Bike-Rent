@@ -90,6 +90,9 @@ class RentalService {
     required int rate,
     required int totalAmount,
     String status = 'Pending',
+    String? startTime,
+    String? endTime,
+    String? timeSlot,
   }) async {
     await _db.collection('bookings').add({
       'customerUid': customerUid,
@@ -103,8 +106,34 @@ class RentalService {
       'rate': rate,
       'totalAmount': totalAmount,
       'status': status,
+      'startTime': startTime,
+      'endTime': endTime,
+      'timeSlot': timeSlot,
       'createdAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  static Future<bool> isTimeSlotAvailable({
+    required String vehicleId,
+    required String timeSlot,
+    required DateTime bookingDate,
+  }) async {
+    final bookings = await _db.collection('bookings')
+        .where('vehicleId', isEqualTo: vehicleId)
+        .where('timeSlot', isEqualTo: timeSlot)
+        .get();
+    for (final doc in bookings.docs) {
+      final startAt = doc.data()['startAt'];
+      if (startAt is Timestamp) {
+        final docDate = startAt.toDate();
+        if (docDate.year == bookingDate.year &&
+            docDate.month == bookingDate.month &&
+            docDate.day == bookingDate.day) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   static Future<void> updateBookingStatus({

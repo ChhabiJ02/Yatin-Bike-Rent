@@ -11,6 +11,7 @@ class VehicleHandover {
   final String vehicleReturnLocation;
   final String vehicleCameFrom;
   final String vehicleReturnedTo;
+  final String returnStatus;
 
   VehicleHandover({
     this.vehicleName = '',
@@ -25,6 +26,7 @@ class VehicleHandover {
     this.vehicleReturnLocation = '',
     this.vehicleCameFrom = '',
     this.vehicleReturnedTo = '',
+    this.returnStatus = 'Pending',
   });
 
   VehicleHandover copyWith({
@@ -40,6 +42,7 @@ class VehicleHandover {
     String? vehicleReturnLocation,
     String? vehicleCameFrom,
     String? vehicleReturnedTo,
+    String? returnStatus,
   }) {
     return VehicleHandover(
       vehicleName: vehicleName ?? this.vehicleName,
@@ -54,6 +57,7 @@ class VehicleHandover {
       vehicleReturnLocation: vehicleReturnLocation ?? this.vehicleReturnLocation,
       vehicleCameFrom: vehicleCameFrom ?? this.vehicleCameFrom,
       vehicleReturnedTo: vehicleReturnedTo ?? this.vehicleReturnedTo,
+      returnStatus: returnStatus ?? this.returnStatus,
     );
   }
 
@@ -71,6 +75,7 @@ class VehicleHandover {
       'vehicleReturnLocation': vehicleReturnLocation,
       'vehicleCameFrom': vehicleCameFrom,
       'vehicleReturnedTo': vehicleReturnedTo,
+      'returnStatus': returnStatus,
     };
   }
 
@@ -88,6 +93,7 @@ class VehicleHandover {
       vehicleReturnLocation: map['vehicleReturnLocation'] ?? '',
       vehicleCameFrom: map['vehicleCameFrom'] ?? '',
       vehicleReturnedTo: map['vehicleReturnedTo'] ?? '',
+      returnStatus: map['returnStatus'] ?? 'Pending',
     );
   }
 

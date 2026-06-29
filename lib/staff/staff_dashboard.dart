@@ -30,6 +30,38 @@ class _StaffDashboardState extends State<StaffDashboard> {
     ));
   }
 
+  Future<void> _updateReturnStatus(String custCode, String status) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Mark as $status?'),
+        content: Text('This will update the vehicle return status to $status.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(status, style: const TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      final docRef = _customersCollection.doc(custCode);
+      final doc = await docRef.get();
+      if (doc.exists) {
+        final data = doc.data()!;
+        final handover = Map<String, dynamic>.from(data['vehicleHandover'] ?? {});
+        handover['returnStatus'] = status;
+        await docRef.update({'vehicleHandover': handover});
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Vehicle marked as $status')),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -37,9 +69,8 @@ class _StaffDashboardState extends State<StaffDashboard> {
       appBar: AppBar(
         foregroundColor: Colors.white,
         title: const UserAppBarTitle(fallbackTitle: 'Staff'),
-        actions: [
-          IconButton(onPressed: () {}, icon: const Icon(Icons.filter_list)),
-          const AppSettingsMenu(),
+        actions: const [
+          AppSettingsMenu(),
         ],
       ),
       body: Container(
@@ -187,6 +218,8 @@ class _StaffDashboardState extends State<StaffDashboard> {
                   return Column(
                     children: docs.map((doc) {
                       final data = doc.data();
+                      final handover = data['vehicleHandover'] as Map<String, dynamic>?;
+                      final returnStatus = handover?['returnStatus'] as String? ?? 'Pending';
                       return _CustomerEntryCard(
                         custCode: doc.id,
                         partyName: data['partyName'] ?? '',
@@ -196,6 +229,8 @@ class _StaffDashboardState extends State<StaffDashboard> {
                         days: data['days'] ?? '',
                         rate: data['rate'] ?? '',
                         billAmount: data['billAmount'] ?? '',
+                        returnStatus: returnStatus,
+                        onStatusChange: _updateReturnStatus,
                       );
                     }).toList(),
                   );
@@ -273,6 +308,8 @@ class _CustomerEntryCard extends StatelessWidget {
   final String days;
   final String rate;
   final String billAmount;
+  final String returnStatus;
+  final Function(String custCode, String status)? onStatusChange;
 
   const _CustomerEntryCard({
     required this.custCode,
@@ -283,6 +320,8 @@ class _CustomerEntryCard extends StatelessWidget {
     required this.days,
     required this.rate,
     required this.billAmount,
+    this.returnStatus = 'Pending',
+    this.onStatusChange,
   });
 
   @override
@@ -330,6 +369,8 @@ class _CustomerEntryCard extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                 ),
               ),
+              const SizedBox(width: 8),
+              _ReturnStatusBadge(status: returnStatus),
             ],
           ),
           const SizedBox(height: 16),
@@ -376,6 +417,17 @@ class _CustomerEntryCard extends StatelessWidget {
                 },
                 child: const Text('Invoice'),
               ),
+              if (returnStatus != 'Returned') ...[
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () {
+                    if (onStatusChange != null) {
+                      onStatusChange!(custCode, 'Returned');
+                    }
+                  },
+                  child: const Text('Mark Returned'),
+                ),
+              ],
               const SizedBox(width: 8),
               ElevatedButton.icon(
                 onPressed: () {
@@ -399,6 +451,46 @@ class _CustomerEntryCard extends StatelessWidget {
 }
 
 // Removed sample static panels; values now come from Firestore streams in the UI.
+
+class _ReturnStatusBadge extends StatelessWidget {
+  final String status;
+
+  const _ReturnStatusBadge({this.status = 'Pending'});
+
+  Color get _badgeColor {
+    return status == 'Returned' ? AppColors.mint : AppColors.amber;
+  }
+
+  IconData get _icon {
+    return status == 'Returned' ? Icons.check_circle : Icons.schedule;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: _badgeColor.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(_icon, size: 14, color: _badgeColor),
+          const SizedBox(width: 4),
+          Text(
+            status,
+            style: TextStyle(
+              color: _badgeColor,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _BookingCard extends StatelessWidget {
   final Booking booking;

@@ -637,6 +637,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         vehicleReturnTime: returnTimeStr ?? '',
         vehicleCameFrom: _vehicleCameFromController.text.trim(),
         vehicleReturnedTo: _vehicleReturnedToController.text.trim(),
+        returnStatus: _vehicleHandover?.returnStatus ?? 'Pending',
       );
       data['vehicleHandover'] = _vehicleHandover!.toMap();
 
