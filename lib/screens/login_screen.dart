@@ -338,22 +338,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               const Text(
-                                'Welcome Back',
+                                'Welcome',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 26,
                                   fontWeight: FontWeight.w700,
                                   color: AppColors.ink,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              const Text(
-                                'Fast booking and seamless management for all users.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.black54,
-                                  height: 1.5,
                                 ),
                               ),
                               const SizedBox(height: 32),

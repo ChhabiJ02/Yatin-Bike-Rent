@@ -202,7 +202,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
   }
 
   String _formatCustomerCodeWithPrefix(String prefix, int id) {
-    return '${prefix}${id.toString().padLeft(4, '0')}';
+    return '$prefix${id.toString().padLeft(4, '0')}';
   }
 
   Future<_CustomerCodeResult> _findMaxCustomerIdForFyear(String fyear) async {
