@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter analyze lib/screens/login_screen.dart)",
+      "Bash(python3 -c \":*)"
+    ]
+  }
+}

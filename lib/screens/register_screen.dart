@@ -327,12 +327,22 @@ class _VerificationPendingScreenState extends State<VerificationPendingScreen> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'We sent a Firebase verification link to ${widget.email}. Verify your email, then come back and continue.',
+                        'We sent a verification link to ${widget.email}. Verify your email, then come back and continue.',
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           fontSize: 15,
                           height: 1.5,
                           color: AppColors.muted,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Also check your spam folder.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.orange.shade700,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                       const SizedBox(height: 28),

@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../models/transportation_model.dart';
+import '../screens/transportation_details_screen.dart';
 import '../theme/app_theme.dart';
 
 class ChallanEntry {
@@ -29,6 +31,7 @@ class ChallanEntry {
   final String dropRs;
   final String extraP;
   final String helmet;
+  final Transportation? transportation;
 
   ChallanEntry({
     required this.fyear,
@@ -56,10 +59,11 @@ class ChallanEntry {
     required this.dropRs,
     required this.extraP,
     required this.helmet,
+    this.transportation,
   });
 
   Map<String, dynamic> toMap() {
-    return {
+    final map = {
       'fyear': fyear,
       'custCode': custCode,
       'partyName': partyName,
@@ -87,6 +91,13 @@ class ChallanEntry {
       'helmet': helmet,
       'createdAt': FieldValue.serverTimestamp(),
     };
+
+    // Include transportation data inside the Challan document
+    if (transportation != null && !transportation!.isEmpty) {
+      map['transportation'] = transportation!.toMap();
+    }
+
+    return map;
   }
 }
 
@@ -155,6 +166,9 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
   final billAmountController = TextEditingController();
   final extraController = TextEditingController();
   final helmetController = TextEditingController();
+
+  // Transportation data stored in memory
+  Transportation? _transportationData;
 
   @override
   void initState() {
@@ -453,38 +467,45 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
   }
 
   Future<void> _saveChallanEntry(ChallanEntry entry) async {
-    final data = entry.toMap();
-    final transactionalData = {
-      'custCode': entry.custCode,
-      'partyName': entry.partyName,
-      'vehicleName': entry.vehicleName,
-      'sDate': entry.sDate,
-      'returnDate': entry.returnDate,
-      'days': entry.days,
-      'rate': entry.rate,
-      'billAmount': entry.billAmount,
-      'pickupRs': entry.pickupRs,
-      'dropRs': entry.dropRs,
-      'extraP': entry.extraP,
-      'helmet': entry.helmet,
-      'fineRs': entry.fineRs,
-      'remark': entry.remark,
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
+    try {
+      final data = entry.toMap();
+      debugPrint('Saving Challan with transportation: ${entry.transportation?.toMap()}');
+      final transactionalData = {
+        'custCode': entry.custCode,
+        'partyName': entry.partyName,
+        'vehicleName': entry.vehicleName,
+        'sDate': entry.sDate,
+        'returnDate': entry.returnDate,
+        'days': entry.days,
+        'rate': entry.rate,
+        'billAmount': entry.billAmount,
+        'pickupRs': entry.pickupRs,
+        'dropRs': entry.dropRs,
+        'extraP': entry.extraP,
+        'helmet': entry.helmet,
+        'fineRs': entry.fineRs,
+        'remark': entry.remark,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
 
-    final batch = FirebaseFirestore.instance.batch();
-    batch.set(ChallanForm._customersCollection.doc(entry.custCode), data);
-    batch.set(ChallanForm._challansCollection.doc(entry.custCode), data);
-    batch.set(
-      ChallanForm._transactionalDetailsCollection.doc(entry.custCode),
-      transactionalData,
-      SetOptions(merge: true),
-    );
-    await batch.commit();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Challan saved successfully.')),
-    );
+      final batch = FirebaseFirestore.instance.batch();
+      batch.set(ChallanForm._customersCollection.doc(entry.custCode), data);
+      batch.set(ChallanForm._challansCollection.doc(entry.custCode), data);
+      batch.set(
+        ChallanForm._transactionalDetailsCollection.doc(entry.custCode),
+        transactionalData,
+        SetOptions(merge: true),
+      );
+      await batch.commit();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Challan saved successfully.')),
+      );
+    } catch (e) {
+      debugPrint('Error saving Challan: $e');
+      if (!mounted) return;
+      rethrow;
+    }
   }
 
   @override
@@ -761,51 +782,104 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                     ElevatedButton(
                       onPressed: () async {
                         if (!(_formKey.currentState?.validate() ?? false)) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Please fill all required fields'),
+                            ),
+                          );
                           return;
                         }
 
-                        final navigator = Navigator.of(context);
-                        final entry = ChallanEntry(
-                          fyear: fyearController.text.trim(),
-                          custCode: customerCodeController.text.trim(),
-                          partyName: partyNameController.text.trim(),
-                          sDate: dateController.text.trim(),
-                          address: addressController.text.trim(),
-                          address2: address2Controller.text.trim(),
-                          landmark: landmarkController.text.trim(),
-                          area: areaController.text.trim(),
-                          city: cityController.text.trim(),
-                          pincode: pincodeController.text.trim(),
-                          smsPhone: smsPhoneController.text.trim(),
-                          reference: referenceController.text.trim(),
-                          aadharNo: aadharController.text.trim(),
-                          licenceNo: licenceController.text.trim(),
-                          remark: remarkController.text.trim(),
-                          fineRs: fineController.text.trim(),
-                          returnDate: returnDateController.text.trim(),
-                          vehicleName: vehicleController.text.trim(),
-                          days: daysController.text.trim(),
-                          rate: rateController.text.trim(),
-                          billAmount: billAmountController.text.trim(),
-                          pickupRs: pickupController.text.trim(),
-                          dropRs: dropController.text.trim(),
-                          extraP: extraController.text.trim(),
-                          helmet: helmetController.text.trim(),
-                        );
+                        try {
+                          final navigator = Navigator.of(context);
+                          final entry = ChallanEntry(
+                            fyear: fyearController.text.trim(),
+                            custCode: customerCodeController.text.trim(),
+                            partyName: partyNameController.text.trim(),
+                            sDate: dateController.text.trim(),
+                            address: addressController.text.trim(),
+                            address2: address2Controller.text.trim(),
+                            landmark: landmarkController.text.trim(),
+                            area: areaController.text.trim(),
+                            city: cityController.text.trim(),
+                            pincode: pincodeController.text.trim(),
+                            smsPhone: smsPhoneController.text.trim(),
+                            reference: referenceController.text.trim(),
+                            aadharNo: aadharController.text.trim(),
+                            licenceNo: licenceController.text.trim(),
+                            remark: remarkController.text.trim(),
+                            fineRs: fineController.text.trim(),
+                            returnDate: returnDateController.text.trim(),
+                            vehicleName: vehicleController.text.trim(),
+                            days: daysController.text.trim(),
+                            rate: rateController.text.trim(),
+                            billAmount: billAmountController.text.trim(),
+                            pickupRs: pickupController.text.trim(),
+                            dropRs: dropController.text.trim(),
+                            extraP: extraController.text.trim(),
+                            helmet: helmetController.text.trim(),
+                            transportation: _transportationData,
+                          );
 
-                        await _saveChallanEntry(entry);
-                        if (!mounted) return;
-                        navigator.pop(true);
+                          await _saveChallanEntry(entry);
+                          if (!mounted) return;
+                          navigator.pop(true);
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error saving: $e')),
+                          );
+                        }
                       },
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: AppColors.ember,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
                       child: const Text(
                         'Save Challan',
-                        style: TextStyle(fontSize: 16),
+                        style: TextStyle(fontSize: 16, color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      onPressed: () async {
+                        final result = await Navigator.push<Transportation>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => TransportationDetailsScreen(
+                              initialData: _transportationData,
+                            ),
+                          ),
+                        );
+                        if (result != null && mounted) {
+                          setState(() {
+                            _transportationData = result;
+                          });
+                        }
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        foregroundColor: AppColors.ink,
+                        side: const BorderSide(color: AppColors.ember),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.local_shipping, size: 20, color: AppColors.ember),
+                          const SizedBox(width: 8),
+                          Text(
+                            _transportationData != null && !_transportationData!.isEmpty
+                                ? 'Transportation Details (Added)'
+                                : 'Transportation Details',
+                            style: TextStyle(fontSize: 16, color: AppColors.ember),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 16),
