@@ -7,6 +7,25 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:988044808292:android:1f97b1802351c1dba20f71",
+        "android_client_info": {
+          "package_name": "com.rexsolutions.streetbike_rental"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB1g_MZ8MGzF-BREoWt2FmpqFkJzEeYNUU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:988044808292:android:8d21a29b098aec49a20f71",
         "android_client_info": {
           "package_name": "com.yatin.yatin_bike_rent"

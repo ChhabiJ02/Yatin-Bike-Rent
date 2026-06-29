@@ -1,6 +1,7 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.rexsolutions.streetbike_rental">
     <application
-        android:label="Yatin Bike Rent"
+        android:label="StreetBike Rental"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
