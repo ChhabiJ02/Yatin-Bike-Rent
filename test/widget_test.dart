@@ -8,7 +8,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:yatin_bike_rent/main.dart';
+import 'package:streetbike_rental/main.dart';
 
 void main() {
   testWidgets('App loads smoke test', (WidgetTester tester) async {

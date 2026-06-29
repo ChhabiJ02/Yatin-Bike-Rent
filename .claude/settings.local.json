@@ -3,7 +3,10 @@
     "allow": [
       "Bash(flutter analyze lib/screens/login_screen.dart)",
       "Bash(python3 -c \":*)",
-      "Bash(flutter analyze lib/staff/challan_form.dart lib/staff/staff_dashboard.dart)"
+      "Bash(flutter analyze lib/staff/challan_form.dart lib/staff/staff_dashboard.dart)",
+      "Bash(flutter pub get)",
+      "Bash(flutter build apk --debug)",
+      "Bash(flutter analyze)"
     ]
   }
 }

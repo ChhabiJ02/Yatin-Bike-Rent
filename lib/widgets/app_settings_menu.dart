@@ -1,100 +1,117 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../screens/login_screen.dart';
+import '../screens/payment_settings_screen.dart';
 import '../services/auth_service.dart';
+import '../theme/app_theme.dart';
 
 class AppSettingsMenu extends StatelessWidget {
   const AppSettingsMenu({super.key});
 
-  Future<void> _showProfileMenu(BuildContext context) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        final user = AuthService.currentUser;
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-            child: StreamBuilder(
-              stream: AuthService.currentUserProfileStream(),
-              builder: (context, snapshot) {
-                final data = snapshot.data?.data();
-                final name = (data?['name'] as String?)?.trim();
-                final role = (data?['role'] as String?)?.trim();
-                final email = user?.email ?? (data?['email'] as String?) ?? '';
-
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 28,
-                          child: Text(
-                            (name?.isNotEmpty == true
-                                    ? name!
-                                    : email.isNotEmpty
-                                    ? email
-                                    : 'U')
-                                .characters
-                                .first
-                                .toUpperCase(),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                name?.isNotEmpty == true ? name! : 'Profile',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              if (email.isNotEmpty)
-                                Text(
-                                  email,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              if (role?.isNotEmpty == true)
-                                Text(
-                                  role!,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    FilledButton.icon(
-                      onPressed: () async {
-                        Navigator.of(sheetContext).pop();
-                        await _confirmLogout(context);
-                      },
-                      icon: const Icon(Icons.logout),
-                      label: const Text('Logout'),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        );
-      },
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: 'Settings',
+      icon: const Icon(Icons.settings_outlined),
+      onPressed: () => _showProfileMenu(context),
     );
   }
 
-  Future<void> _confirmLogout(BuildContext context) async {
-    final navigator = Navigator.of(context);
+  void _showProfileMenu(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const _StaffProfileScreen(),
+      ),
+    );
+  }
+}
+
+class _StaffProfileScreen extends StatefulWidget {
+  const _StaffProfileScreen();
+
+  @override
+  State<_StaffProfileScreen> createState() => _StaffProfileScreenState();
+}
+
+class _StaffProfileScreenState extends State<_StaffProfileScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
+  bool _isLoading = true;
+  bool _isSaving = false;
+  String? _userId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = AuthService.currentUser;
+    if (user != null) {
+      _userId = user.uid;
+      _emailController.text = user.email ?? '';
+
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (doc.exists && mounted) {
+        final data = doc.data()!;
+        _nameController.text = data['name'] ?? '';
+        _phoneController.text = data['phone'] ?? '';
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_userId == null) return;
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_userId)
+          .update({
+        'name': _nameController.text.trim(),
+        'phone': _phoneController.text.trim(),
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile saved successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving: $e')),
+        );
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _isSaving = false;
+      });
+    }
+  }
+
+  Future<void> _logout() async {
     final shouldLogout = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -116,19 +133,167 @@ class AppSettingsMenu extends StatelessWidget {
     );
 
     if (shouldLogout != true) return;
+
     await AuthService.signOut();
-    navigator.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: 'Settings',
-      icon: const Icon(Icons.settings_outlined),
-      onPressed: () => _showProfileMenu(context),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Profile'),
+        backgroundColor: AppColors.ember,
+        foregroundColor: Colors.white,
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    CircleAvatar(
+                      radius: 50,
+                      backgroundColor: AppColors.ember,
+                      child: Icon(
+                        Icons.person,
+                        size: 50,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+                    TextFormField(
+                      controller: _nameController,
+                      decoration: InputDecoration(
+                        labelText: 'Name',
+                        prefixIcon: const Icon(Icons.person_outline),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Name is required';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _phoneController,
+                      keyboardType: TextInputType.phone,
+                      decoration: InputDecoration(
+                        labelText: 'Phone Number',
+                        prefixIcon: const Icon(Icons.phone_outlined),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Phone number is required';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _emailController,
+                      readOnly: true,
+                      decoration: InputDecoration(
+                        labelText: 'Email',
+                        prefixIcon: const Icon(Icons.email_outlined),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    ElevatedButton(
+                      onPressed: _isSaving ? null : _saveProfile,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.ember,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: _isSaving
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              'Save',
+                              style: TextStyle(fontSize: 16),
+                            ),
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const PaymentSettingsScreen(),
+                          ),
+                        );
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.ember,
+                        side: const BorderSide(color: AppColors.ember),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      icon: const Icon(Icons.qr_code),
+                      label: const Text(
+                        'Payment Settings',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: _logout,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      icon: const Icon(Icons.logout),
+                      label: const Text(
+                        'Logout',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
     );
   }
 }

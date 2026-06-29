@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../models/booking.dart';
-import '../models/transportation_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/rental_service.dart';
 import '../widgets/user_app_bar_title.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_settings_menu.dart';
-import 'challan_form.dart';
+import '../screens/challan_entry_screen.dart';
+import '../screens/invoice_preview_screen.dart';
+import '../screens/payment_record_screen.dart';
 
 class StaffDashboard extends StatefulWidget {
   const StaffDashboard({super.key});
@@ -20,45 +21,13 @@ class _StaffDashboardState extends State<StaffDashboard> {
   final _customersCollection = FirebaseFirestore.instance.collection('customers');
 
   void _openEntryForm() {
-    ChallanForm.show(context);
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const ChallanEntryScreen()));
   }
 
   void _openEditForm(String custCode) async {
-    final doc = await _customersCollection.doc(custCode).get();
-    if (doc.exists) {
-      final data = doc.data()!;
-      final transportationData = data['transportation'] != null
-          ? Transportation.fromMap(Map<String, dynamic>.from(data['transportation']))
-          : null;
-
-      await ChallanForm.showForEdit(
-        context,
-        custCode: custCode,
-        partyName: data['partyName'] ?? '',
-        address: data['address'] ?? '',
-        address2: data['address2'] ?? '',
-        landmark: data['landmark'] ?? '',
-        area: data['area'] ?? '',
-        city: data['city'] ?? '',
-        pincode: data['pincode'] ?? '',
-        smsPhone: data['smsPhone'] ?? '',
-        reference: data['reference'] ?? '',
-        aadharNo: data['aadharNo'] ?? '',
-        licenceNo: data['licenceNo'] ?? '',
-        remark: data['remark'] ?? '',
-        fineRs: data['fineRs'] ?? '',
-        returnDate: data['returnDate'] ?? '',
-        vehicleName: data['vehicleName'] ?? '',
-        days: data['days'] ?? '',
-        rate: data['rate'] ?? '',
-        billAmount: data['billAmount'] ?? '',
-        pickupRs: data['pickupRs'] ?? '',
-        dropRs: data['dropRs'] ?? '',
-        extraP: data['extraP'] ?? '',
-        helmet: data['helmet'] ?? '',
-        transportation: transportationData,
-      );
-    }
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => ChallanEntryScreen(custCode: custCode),
+    ));
   }
 
   @override
@@ -390,14 +359,34 @@ class _CustomerEntryCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
+              TextButton(
+                onPressed: () {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => ChallanEntryScreen(custCode: custCode),
+                  ));
+                },
+                child: const Text('Edit'),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: () {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => InvoicePreviewScreen(custCode: custCode),
+                  ));
+                },
+                child: const Text('Invoice'),
+              ),
+              const SizedBox(width: 8),
               ElevatedButton.icon(
                 onPressed: () {
-                  context.findAncestorStateOfType<_StaffDashboardState>()?._openEditForm(custCode);
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => PaymentRecordScreen(custCode: custCode),
+                  ));
                 },
-                icon: const Icon(Icons.edit, size: 18),
-                label: const Text('Edit'),
+                icon: const Icon(Icons.currency_rupee, size: 18),
+                label: const Text('Payment'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.ember,
+                  backgroundColor: AppColors.mint,
                   foregroundColor: Colors.white,
                 ),
               ),
