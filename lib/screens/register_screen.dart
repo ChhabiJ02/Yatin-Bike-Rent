@@ -15,6 +15,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final nameController = TextEditingController();
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
+  final confirmPasswordController = TextEditingController();
   bool isLoading = false;
 
   @override
@@ -22,6 +23,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     nameController.dispose();
     emailController.dispose();
     passwordController.dispose();
+    confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -29,10 +31,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => isLoading = true);
     try {
       final email = emailController.text.trim();
-      final cred = await AuthService.signUp(
-        email: email,
-        password: passwordController.text.trim(),
-      );
+      final password = passwordController.text.trim();
+      final confirmPassword = confirmPasswordController.text.trim();
+      if (password != confirmPassword) {
+        throw FirebaseAuthException(
+          code: 'password-mismatch',
+          message: 'Password and confirm password do not match.',
+        );
+      }
+      final cred = await AuthService.signUp(email: email, password: password);
       final uid = cred.user?.uid;
       if (uid != null) {
         await AuthService.saveUserProfile(
@@ -81,6 +88,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      Center(
+                        child: Container(
+                          height: 104,
+                          width: 104,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.ember.withValues(alpha: 0.35),
+                                blurRadius: 18,
+                                spreadRadius: 4,
+                              ),
+                            ],
+                          ),
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white,
+                            ),
+                            padding: const EdgeInsets.all(8),
+                            child: ClipOval(
+                              child: Image.asset(
+                                'assets/logos/png/logo1.png',
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
                       Container(
                         padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
@@ -132,6 +169,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Password',
                           prefixIcon: Icon(Icons.lock_outline),
+                        ),
+                        obscureText: true,
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: confirmPasswordController,
+                        decoration: const InputDecoration(
+                          labelText: 'Confirm password',
+                          prefixIcon: Icon(Icons.lock_reset_outlined),
                         ),
                         obscureText: true,
                       ),

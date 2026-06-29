@@ -21,7 +21,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController resetEmailController = TextEditingController();
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
 
   static const String _savedEmailKey = 'saved_email';
   static const String _savedPasswordKey = 'saved_password';
@@ -66,8 +68,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _saveCredentials() async {
     if (rememberMe) {
-      await _secureStorage.write(key: _savedEmailKey, value: emailController.text.trim());
-      await _secureStorage.write(key: _savedPasswordKey, value: passwordController.text.trim());
+      await _secureStorage.write(
+        key: _savedEmailKey,
+        value: emailController.text.trim(),
+      );
+      await _secureStorage.write(
+        key: _savedPasswordKey,
+        value: passwordController.text.trim(),
+      );
       await _secureStorage.write(key: _rememberMeKey, value: 'true');
     } else {
       await _secureStorage.delete(key: _savedEmailKey);
@@ -87,20 +95,32 @@ class _LoginScreenState extends State<LoginScreen> {
       isLoading = true;
     });
     try {
+      final loginIdentifier = emailController.text.trim();
       final cred = await AuthService.signIn(
-        email: emailController.text.trim(),
+        email: loginIdentifier,
         password: passwordController.text.trim(),
       );
       final user = AuthService.currentUser ?? cred.user;
       final uid = user?.uid;
-      final roleFromDb = uid == null
-          ? null
-          : await AuthService.getUserRole(uid);
-
-      if (roleFromDb == null) {
+      if (uid == null) {
         throw FirebaseAuthException(
+          code: 'missing-user',
+          message: 'Could not resolve the signed-in account.',
+        );
+      }
+
+      final roleFromDb = await AuthService.resolveUserRole(
+        uid: uid,
+        email: user?.email ?? emailController.text.trim(),
+        loginIdentifier: loginIdentifier,
+      );
+      if (roleFromDb == null) {
+        await AuthService.signOut();
+        throw FirebaseException(
+          plugin: 'cloud_firestore',
           code: 'missing-role',
-          message: 'No dashboard role found for this account.',
+          message:
+              'No valid role found in Firebase users collection for this account.',
         );
       }
 
@@ -123,6 +143,16 @@ class _LoginScreenState extends State<LoginScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(e.message ?? 'Login failed')));
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message ?? 'Login failed')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Login failed')));
     } finally {
       if (mounted) {
         setState(() => isLoading = false);
@@ -227,14 +257,12 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           SafeArea(
             child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 20,
-                ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 500),
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // Logo section with enhanced styling
@@ -242,8 +270,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Column(
                           children: [
                             Container(
-                              height: 140,
-                              width: 140,
+                              height: 86,
+                              width: 86,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 boxShadow: [
@@ -251,13 +279,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                     color: AppColors.ember.withValues(
                                       alpha: 0.5,
                                     ),
-                                    blurRadius: 25,
-                                    spreadRadius: 8,
+                                    blurRadius: 16,
+                                    spreadRadius: 3,
                                   ),
                                   BoxShadow(
                                     color: Colors.black.withValues(alpha: 0.2),
-                                    blurRadius: 15,
-                                    spreadRadius: 3,
+                                    blurRadius: 10,
+                                    spreadRadius: 1,
                                   ),
                                 ],
                               ),
@@ -275,12 +303,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 32),
+                            const SizedBox(height: 10),
                             Text(
                               'YATIN',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize: 42,
+                                fontSize: 30,
                                 fontWeight: FontWeight.w900,
                                 color: Colors.white,
                                 letterSpacing: 3,
@@ -293,12 +321,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 2),
                             Text(
                               'BIKE RENT',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize: 28,
+                                fontSize: 19,
                                 fontWeight: FontWeight.w700,
                                 color: AppColors.amber,
                                 letterSpacing: 2,
@@ -314,12 +342,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 40),
+                      const SizedBox(height: 18),
                       // Login form container
                       Container(
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.96),
-                          borderRadius: BorderRadius.circular(28),
+                          borderRadius: BorderRadius.circular(22),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withValues(alpha: 0.12),
@@ -331,8 +359,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 28,
-                            vertical: 32,
+                            horizontal: 22,
+                            vertical: 22,
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -341,12 +369,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                 'Welcome Back',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  fontSize: 26,
+                                  fontSize: 22,
                                   fontWeight: FontWeight.w700,
                                   color: AppColors.ink,
                                 ),
                               ),
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 6),
                               const Text(
                                 'Fast booking and seamless management for all users.',
                                 textAlign: TextAlign.center,
@@ -356,7 +384,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   height: 1.5,
                                 ),
                               ),
-                              const SizedBox(height: 32),
+                              const SizedBox(height: 18),
                               // Email field with enhanced styling
                               TextField(
                                 controller: emailController,
@@ -398,7 +426,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   fillColor: Colors.grey.shade50,
                                 ),
                               ),
-                              const SizedBox(height: 18),
+                              const SizedBox(height: 12),
                               // Password field with enhanced styling
                               TextField(
                                 controller: passwordController,
@@ -454,7 +482,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   fillColor: Colors.grey.shade50,
                                 ),
                               ),
-                              const SizedBox(height: 14),
+                              const SizedBox(height: 8),
                               // Remember me and forgot password
                               Row(
                                 children: [
@@ -508,7 +536,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 24),
+                              const SizedBox(height: 14),
                               // Enhanced login button
                               SizedBox(
                                 height: 56,
@@ -540,7 +568,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                         ),
                                 ),
                               ),
-                              const SizedBox(height: 18),
+                              const SizedBox(height: 8),
                               // Sign up button
                               TextButton(
                                 onPressed: () async {

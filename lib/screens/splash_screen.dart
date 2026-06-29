@@ -79,7 +79,19 @@ class _SplashScreenState extends State<SplashScreen>
       return;
     }
 
-    final role = await AuthService.getUserRole(user.uid);
+    final role = await AuthService.resolveUserRole(
+      uid: user.uid,
+      email: user.email,
+    );
+    if (role == null) {
+      await AuthService.signOut();
+      if (!mounted) return;
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
+      return;
+    }
+
     Widget destination;
     if (role == 'Admin') {
       destination = const AdminDashboard();
