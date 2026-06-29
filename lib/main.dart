@@ -1,6 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'screens/splash_screen.dart';
 import 'theme/app_theme.dart';
 
@@ -73,22 +72,6 @@ class _BikeRentHomePageState extends State<BikeRentHomePage> {
 
   final List<Booking> _bookings = [];
   int _selectedTab = 0;
-
-  Future<void> addBike() async {
-    var url = Uri.parse("http://localhost/bike_api/add_bike.php");
-
-    await http.post(
-      url,
-      body: {
-        "bike_name": "Activa",
-        "bike_number": "GJ05AB1234",
-        "rent_per_day": "500",
-        "status": "Available",
-      },
-    );
-
-    // Handle API response as needed.
-  }
 
   void _addBooking(Booking booking) {
     setState(() {
