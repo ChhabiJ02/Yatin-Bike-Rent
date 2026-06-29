@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la f:/Github/Yatin-Bike-Rent/android/*.gradle*)",
+      "Bash(dir f:\\\\Github\\\\Yatin-Bike-Rent\\\\android\\\\*.gradle*)"
+    ]
+  }
+}

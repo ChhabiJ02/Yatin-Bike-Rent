@@ -82,7 +82,6 @@ class _BikeRentHomePageState extends State<BikeRentHomePage> {
   @override
   void initState() {
     super.initState();
-    addBike();
   }
 
   @override
