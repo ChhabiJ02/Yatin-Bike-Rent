@@ -19,6 +19,7 @@ class StaffDashboard extends StatefulWidget {
 
 class _StaffDashboardState extends State<StaffDashboard> {
   final _customersCollection = FirebaseFirestore.instance.collection('customers');
+  String _returnFilter = 'All';
 
   void _openEntryForm() {
     Navigator.push(context, MaterialPageRoute(builder: (_) => const ChallanEntryScreen()));
@@ -193,6 +194,75 @@ class _StaffDashboardState extends State<StaffDashboard> {
                   ),
                 ],
               ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: AppTheme.softCard(),
+                      child: StreamBuilder(
+                        stream: _customersCollection.snapshots(),
+                        builder: (context, snapshot) {
+                          final docs = snapshot.data?.docs ?? [];
+                          final pending = docs.where((d) {
+                            final handover = d.data()['vehicleHandover'] as Map<String, dynamic>?;
+                            return (handover?['returnStatus'] as String?) != 'Returned';
+                          }).length;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.schedule, color: AppColors.amber, size: 24),
+                              const SizedBox(height: 10),
+                              Text('$pending', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
+                              const SizedBox(height: 4),
+                              const Text('Return Pending', style: TextStyle(color: AppColors.muted, fontSize: 12)),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: AppTheme.softCard(),
+                      child: StreamBuilder(
+                        stream: _customersCollection.snapshots(),
+                        builder: (context, snapshot) {
+                          final docs = snapshot.data?.docs ?? [];
+                          final now = DateTime.now();
+                          final returnedToday = docs.where((d) {
+                            final handover = d.data()['vehicleHandover'] as Map<String, dynamic>?;
+                            return (handover?['returnStatus'] as String?) == 'Returned';
+                          }).length;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.check_circle, color: AppColors.mint, size: 24),
+                              const SizedBox(height: 10),
+                              Text('$returnedToday', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
+                              const SizedBox(height: 4),
+                              const Text('Total Returned', style: TextStyle(color: AppColors.muted, fontSize: 12)),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  _FilterChip(label: 'All', isSelected: _returnFilter == 'All', onTap: () => setState(() => _returnFilter = 'All')),
+                  const SizedBox(width: 8),
+                  _FilterChip(label: 'Return Pending', isSelected: _returnFilter == 'Pending', onTap: () => setState(() => _returnFilter = 'Pending')),
+                  const SizedBox(width: 8),
+                  _FilterChip(label: 'Returned', isSelected: _returnFilter == 'Returned', onTap: () => setState(() => _returnFilter = 'Returned')),
+                ],
+              ),
               const SizedBox(height: 24),
               const Text(
                 'Customer Entries',
@@ -208,12 +278,21 @@ class _StaffDashboardState extends State<StaffDashboard> {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: Padding(padding: EdgeInsets.all(12), child: SizedBox(height:24,width:24,child:CircularProgressIndicator(strokeWidth:2.5))));
                   }
-                  final docs = snapshot.data?.docs ?? [];
+                  var docs = snapshot.data?.docs ?? [];
                   if (docs.isEmpty) {
                     return const Padding(
                       padding: EdgeInsets.symmetric(vertical: 12),
                       child: Text('No customer entries available.', style: TextStyle(color: AppColors.muted)),
                     );
+                  }
+                  if (_returnFilter != 'All') {
+                    docs = docs.where((d) {
+                      final handover = d.data()['vehicleHandover'] as Map<String, dynamic>?;
+                      final status = (handover?['returnStatus'] as String?) ?? 'Pending';
+                      if (_returnFilter == 'Pending') return status != 'Returned';
+                      if (_returnFilter == 'Returned') return status == 'Returned';
+                      return true;
+                    }).toList();
                   }
                   return Column(
                     children: docs.map((doc) {
@@ -450,7 +529,42 @@ class _CustomerEntryCard extends StatelessWidget {
   }
 }
 
-// Removed sample static panels; values now come from Firestore streams in the UI.
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.ember : Colors.white.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppColors.ember : Colors.white.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : AppColors.muted,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            fontSize: 13,
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _ReturnStatusBadge extends StatelessWidget {
   final String status;
