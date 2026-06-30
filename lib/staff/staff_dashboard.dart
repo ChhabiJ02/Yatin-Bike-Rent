@@ -25,12 +25,6 @@ class _StaffDashboardState extends State<StaffDashboard> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => const ChallanEntryScreen()));
   }
 
-  void _openEditForm(String custCode) async {
-    Navigator.push(context, MaterialPageRoute(
-      builder: (_) => ChallanEntryScreen(custCode: custCode),
-    ));
-  }
-
   Future<void> _updateReturnStatus(String custCode, String status) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -232,7 +226,6 @@ class _StaffDashboardState extends State<StaffDashboard> {
                         stream: _customersCollection.snapshots(),
                         builder: (context, snapshot) {
                           final docs = snapshot.data?.docs ?? [];
-                          final now = DateTime.now();
                           final returnedToday = docs.where((d) {
                             final handover = d.data()['vehicleHandover'] as Map<String, dynamic>?;
                             return (handover?['returnStatus'] as String?) == 'Returned';
