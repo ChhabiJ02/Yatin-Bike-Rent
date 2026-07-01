@@ -1,10 +1,10 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../services/rental_service.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_settings_menu.dart';
-import '../admin/transportation_form.dart';
 import '../widgets/user_app_bar_title.dart';
 
 class AdminDashboard extends StatelessWidget {
@@ -133,6 +133,72 @@ class AdminDashboard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 14),
+
+              // Vehicle Return Status Summary
+              const Text(
+                'Vehicle Status',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _VehicleStatusCard(
+                      title: 'Available',
+                      icon: Icons.check_circle,
+                      color: AppColors.mint,
+                      filterKey: 'available',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _VehicleStatusCard(
+                      title: 'Booked',
+                      icon: Icons.pedal_bike,
+                      color: AppColors.ember,
+                      filterKey: 'booked',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _VehicleStatusCard(
+                      title: 'Return Pending',
+                      icon: Icons.schedule,
+                      color: AppColors.amber,
+                      filterKey: 'returnPending',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _VehicleStatusCard(
+                      title: 'Returned',
+                      icon: Icons.assignment_turned_in,
+                      color: AppColors.sky,
+                      filterKey: 'returned',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Quick Actions
+              const Text(
+                'Quick Actions',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 14),
               GridView.count(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -140,45 +206,62 @@ class AdminDashboard extends StatelessWidget {
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
                 childAspectRatio: 0.98,
-                children: [
-                  const _AdminCard(
+                children: const [
+                  _AdminCard(
                     title: 'Vehicles',
                     icon: Icons.pedal_bike,
                     color: AppColors.mint,
                   ),
-                  const _AdminCard(
+                  _AdminCard(
                     title: 'Bookings',
                     icon: Icons.receipt_long,
                     color: AppColors.sky,
                   ),
-                  const _AdminCard(
+                  _AdminCard(
                     title: 'Staff',
                     icon: Icons.group,
                     color: AppColors.amber,
                   ),
-                  const _AdminCard(
+                  _AdminCard(
                     title: 'Reports',
                     icon: Icons.bar_chart,
                     color: AppColors.ember,
                   ),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TransportationForm()));
-                    },
-                    child: const _AdminCard(
-                      title: 'Transportation',
-                      icon: Icons.local_shipping,
-                      color: AppColors.sky,
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 12),
-              ElevatedButton.icon(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TransportationForm())),
-                icon: const Icon(Icons.local_shipping),
-                label: const Text('Transportation Details'),
-                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: AppTheme.softCard(),
+                child: Row(
+                  children: [
+                    const Icon(Icons.local_shipping, color: AppColors.sky, size: 28),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Transportation Details',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Transportation is now captured inside Challan entries.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 26),
               const _UserRoleManager(),
@@ -426,8 +509,8 @@ class _RevenueCard extends StatelessWidget {
             StreamBuilder(
               stream: RentalService.bookingsStream(),
               builder: (context, snapshot) {
-                final total = snapshot.data?.docs.fold<int>(0, (sum, doc) {
-                      return sum + ((doc.data()['totalAmount'] as num?)?.toInt() ?? 0);
+                final total = snapshot.data?.docs.fold<int>(0, (total, doc) {
+                      return total + ((doc.data()['totalAmount'] as num?)?.toInt() ?? 0);
                     }) ??
                     0;
                 return Text(
@@ -492,6 +575,110 @@ class _AdminCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _VehicleStatusCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Color color;
+  final String filterKey;
+
+  const _VehicleStatusCard({
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.filterKey,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: AppTheme.softCard(),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildCountStream(),
+                const SizedBox(height: 2),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCountStream() {
+    if (filterKey == 'returnPending' || filterKey == 'returned') {
+      return StreamBuilder(
+        stream: FirebaseFirestore.instance.collection('customers').snapshots(),
+        builder: (context, snapshot) {
+          final docs = snapshot.data?.docs ?? [];
+          int count = 0;
+          for (final doc in docs) {
+            final handover = doc.data()['vehicleHandover'] as Map<String, dynamic>?;
+            final status = handover?['returnStatus'] as String? ?? 'Pending';
+            if (filterKey == 'returned' && status == 'Returned') {
+              count++;
+            } else if (filterKey == 'returnPending' && status != 'Returned') {
+              count++;
+            }
+          }
+          return Text(
+            '$count',
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: AppColors.ink,
+            ),
+          );
+        },
+      );
+    }
+
+    return StreamBuilder(
+      stream: FirebaseFirestore.instance.collection('vehicles').snapshots(),
+      builder: (context, snapshot) {
+        final docs = snapshot.data?.docs ?? [];
+        int count = 0;
+        for (final doc in docs) {
+          final available = doc.data()['available'] as bool? ?? false;
+          if (filterKey == 'available' && available) {
+            count++;
+          } else if (filterKey == 'booked' && !available) {
+            count++;
+          }
+        }
+        return Text(
+          '$count',
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+            color: AppColors.ink,
+          ),
+        );
+      },
     );
   }
 }

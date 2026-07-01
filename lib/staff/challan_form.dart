@@ -1,9 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../models/customer_documents.dart';
 import '../models/transportation_model.dart';
 import '../screens/transportation_details_screen.dart';
 import '../theme/app_theme.dart';
+import '../widgets/form_image_picker.dart';
 
 class ChallanEntry {
   final String fyear;
@@ -32,6 +34,7 @@ class ChallanEntry {
   final String extraP;
   final String helmet;
   final Transportation? transportation;
+  final CustomerDocuments? customerDocuments;
 
   ChallanEntry({
     required this.fyear,
@@ -60,6 +63,7 @@ class ChallanEntry {
     required this.extraP,
     required this.helmet,
     this.transportation,
+    this.customerDocuments,
   });
 
   Map<String, dynamic> toMap() {
@@ -95,6 +99,11 @@ class ChallanEntry {
     // Include transportation data inside the Challan document
     if (transportation != null && !transportation!.isEmpty) {
       map['transportation'] = transportation!.toMap();
+    }
+
+    // Include customer documents
+    if (customerDocuments != null && !customerDocuments!.isEmpty) {
+      map['customerDocuments'] = customerDocuments!.toMap();
     }
 
     return map;
@@ -214,6 +223,7 @@ class _ChallanFormWidget extends StatefulWidget {
   String? extraP;
   String? helmet;
   Transportation? transportation;
+  CustomerDocuments? customerDocuments;
 
   _ChallanFormWidget();
 
@@ -242,7 +252,7 @@ class _ChallanFormWidget extends StatefulWidget {
     this.extraP,
     this.helmet,
     this.transportation,
-  });
+  }) : customerDocuments = null;
 
   @override
   State<_ChallanFormWidget> createState() => _ChallanFormWidgetState();
@@ -279,6 +289,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
 
   // Transportation data stored in memory
   Transportation? _transportationData;
+  CustomerDocuments? _customerDocuments;
   bool _isEditMode = false;
 
   @override
@@ -612,6 +623,84 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
     );
   }
 
+  Widget _buildDocumentSection() {
+    return Column(
+      children: [
+        FormImagePicker(
+          label: 'Aadhaar Front',
+          imageUrl: _customerDocuments?.aadhaarFront,
+          folder: 'documents/${customerCodeController.text}/aadhaar',
+          isRequired: true,
+          onImageSelected: (url) {
+            setState(() {
+              _customerDocuments = (_customerDocuments ?? CustomerDocuments())
+                  .copyWith(aadhaarFront: url);
+            });
+          },
+        ),
+        FormImagePicker(
+          label: 'Aadhaar Back',
+          imageUrl: _customerDocuments?.aadhaarBack,
+          folder: 'documents/${customerCodeController.text}/aadhaar',
+          isRequired: true,
+          onImageSelected: (url) {
+            setState(() {
+              _customerDocuments = (_customerDocuments ?? CustomerDocuments())
+                  .copyWith(aadhaarBack: url);
+            });
+          },
+        ),
+        FormImagePicker(
+          label: 'License Front',
+          imageUrl: _customerDocuments?.licenseFront,
+          folder: 'documents/${customerCodeController.text}/license',
+          isRequired: true,
+          onImageSelected: (url) {
+            setState(() {
+              _customerDocuments = (_customerDocuments ?? CustomerDocuments())
+                  .copyWith(licenseFront: url);
+            });
+          },
+        ),
+        FormImagePicker(
+          label: 'License Back',
+          imageUrl: _customerDocuments?.licenseBack,
+          folder: 'documents/${customerCodeController.text}/license',
+          isRequired: true,
+          onImageSelected: (url) {
+            setState(() {
+              _customerDocuments = (_customerDocuments ?? CustomerDocuments())
+                  .copyWith(licenseBack: url);
+            });
+          },
+        ),
+        FormImagePicker(
+          label: 'Customer with Vehicle',
+          imageUrl: _customerDocuments?.customerVehiclePhoto,
+          folder: 'documents/${customerCodeController.text}/vehicle',
+          isRequired: true,
+          onImageSelected: (url) {
+            setState(() {
+              _customerDocuments = (_customerDocuments ?? CustomerDocuments())
+                  .copyWith(customerVehiclePhoto: url);
+            });
+          },
+        ),
+        FormImagePicker(
+          label: 'Travel Ticket (Optional)',
+          imageUrl: _customerDocuments?.travelTicketPhoto,
+          folder: 'documents/${customerCodeController.text}/travel',
+          onImageSelected: (url) {
+            setState(() {
+              _customerDocuments = (_customerDocuments ?? CustomerDocuments())
+                  .copyWith(travelTicketPhoto: url);
+            });
+          },
+        ),
+      ],
+    );
+  }
+
   Future<void> _saveChallanEntry(ChallanEntry entry) async {
     try {
       final data = entry.toMap();
@@ -823,6 +912,17 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                     _buildTextField('Remark', remarkController, maxLines: 3),
                     const SizedBox(height: 20),
                     const Text(
+                      'Customer Documents',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildDocumentSection(),
+                    const SizedBox(height: 20),
+                    const Text(
                       'Booking Information',
                       style: TextStyle(
                         fontSize: 18,
@@ -968,6 +1068,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                             extraP: extraController.text.trim(),
                             helmet: helmetController.text.trim(),
                             transportation: _transportationData,
+                            customerDocuments: _customerDocuments,
                           );
 
                           await _saveChallanEntry(entry);
@@ -975,6 +1076,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                           navigator.pop(true);
                         } catch (e) {
                           if (!mounted) return;
+                          // ignore: use_build_context_synchronously
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text('Error saving: $e')),
                           );

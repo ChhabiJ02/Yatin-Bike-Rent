@@ -113,27 +113,54 @@ class RentalService {
     });
   }
 
-  static Future<bool> isTimeSlotAvailable({
+  /// Check if a time slot is available for a vehicle - improved validation
+  /// Returns null if available, or error message if not available
+  static Future<String?> checkTimeSlotAvailable({
     required String vehicleId,
     required String timeSlot,
     required DateTime bookingDate,
+    String? excludeBookingId,
   }) async {
     final bookings = await _db.collection('bookings')
         .where('vehicleId', isEqualTo: vehicleId)
         .where('timeSlot', isEqualTo: timeSlot)
         .get();
+
     for (final doc in bookings.docs) {
+      // Skip the booking being edited
+      if (excludeBookingId != null && doc.id == excludeBookingId) {
+        continue;
+      }
+
       final startAt = doc.data()['startAt'];
       if (startAt is Timestamp) {
         final docDate = startAt.toDate();
         if (docDate.year == bookingDate.year &&
             docDate.month == bookingDate.month &&
             docDate.day == bookingDate.day) {
-          return false;
+          final existingStartTime = doc.data()['startTime'] as String? ?? '';
+          final existingEndTime = doc.data()['endTime'] as String? ?? '';
+          return 'Vehicle already booked for $timeSlot ($existingStartTime - $existingEndTime)';
         }
       }
     }
-    return true;
+    return null; // Available
+  }
+
+  /// Simplified availability check
+  static Future<bool> isTimeSlotAvailable({
+    required String vehicleId,
+    required String timeSlot,
+    required DateTime bookingDate,
+    String? excludeBookingId,
+  }) async {
+    final result = await checkTimeSlotAvailable(
+      vehicleId: vehicleId,
+      timeSlot: timeSlot,
+      bookingDate: bookingDate,
+      excludeBookingId: excludeBookingId,
+    );
+    return result == null;
   }
 
   static Future<void> updateBookingStatus({

@@ -3,14 +3,10 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:intl/intl.dart';
 import '../models/invoice.dart';
 import '../models/challan_data.dart';
 
 class InvoiceService {
-  static final _dateFormat = DateFormat('dd-MM-yyyy');
-  static final _dateTimeFormat = DateFormat('dd-MM-yyyy HH:mm');
-
   static Future<String> generateInvoicePdf({
     required Invoice invoice,
     String? companyName,

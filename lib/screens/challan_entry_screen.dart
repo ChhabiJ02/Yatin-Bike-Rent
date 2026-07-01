@@ -4,9 +4,11 @@ import '../models/customer_documents.dart';
 import '../models/vehicle_handover.dart';
 import '../models/travel_details.dart';
 import '../models/kilometer_details.dart';
-import '../models/payment.dart';
+import '../models/transportation_model.dart';
 import '../theme/app_theme.dart';
 import '../widgets/form_image_picker.dart';
+import '../services/challan_service.dart';
+import 'transportation_details_screen.dart';
 
 class ChallanEntryScreen extends StatefulWidget {
   final String? custCode;
@@ -24,6 +26,8 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
   // Controllers
   final _custCodeController = TextEditingController();
+  final _dateController = TextEditingController();
+  final _fyearController = TextEditingController();
   final _partyNameController = TextEditingController();
   final _addressController = TextEditingController();
   final _phoneController = TextEditingController();
@@ -94,37 +98,41 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   VehicleHandover? _vehicleHandover;
   TravelDetails? _travelDetails;
   KilometerDetails? _kilometerDetails;
-  PaymentDetails? _payment;
+  Transportation? _transportation;
 
   bool _isEditMode = false;
   bool _isSaving = false;
-  String _date = '';
-  String _fyear = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _date = _formatDateTime(DateTime.now());
-    _fyear = _currentFinancialYear();
-    _custCodeController.text = widget.custCode ?? '';
-    if (widget.custCode != null) {
-      _isEditMode = true;
-      _loadExistingData();
-    }
-  }
-
   String _formatDateTime(DateTime dt) {
     return '${dt.day.toString().padLeft(2, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
   }
 
-  String _currentFinancialYear() {
-    final now = DateTime.now();
-    final currentYear = now.year;
-    final fiscalYearStart = DateTime(currentYear, 4, 1);
-    if (now.isBefore(fiscalYearStart)) {
-      return '${currentYear - 1}-$currentYear';
+  Future<void> _generateCustomerCode() async {
+    try {
+      final code = await ChallanService.generateCustomerCode();
+      if (mounted) {
+        _custCodeController.text = code;
+      }
+    } catch (e) {
+      debugPrint('Error generating customer code: $e');
     }
-    return '$currentYear-${currentYear + 1}';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Set Date and FYear automatically
+    _dateController.text = _formatDateTime(DateTime.now());
+    _fyearController.text = ChallanService.getCurrentFinancialYear();
+
+    if (widget.custCode != null) {
+      // Edit mode - load existing data
+      _custCodeController.text = widget.custCode ?? '';
+      _isEditMode = true;
+      _loadExistingData();
+    } else {
+      // New entry mode - generate new customer code
+      _generateCustomerCode();
+    }
   }
 
   Future<void> _loadExistingData() async {
@@ -141,7 +149,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       _daysController.text = data['days'] ?? '';
       _rateController.text = data['rate'] ?? '';
       _billAmountController.text = data['billAmount'] ?? '';
-      _date = data['sDate'] ?? _date;
+      // Load existing date and financial year (don't regenerate for editing)
+      _dateController.text = data['sDate'] ?? _dateController.text;
+      _fyearController.text = data['fyear'] ?? _fyearController.text;
 
       if (data['customerDocuments'] != null) {
         _customerDocuments = CustomerDocuments.fromMap(Map<String, dynamic>.from(data['customerDocuments']));
@@ -194,8 +204,8 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         _startKMController.text = _kilometerDetails!.startKM.toString();
         _endKMController.text = _kilometerDetails!.endKM.toString();
       }
-      if (data['payment'] != null) {
-        _payment = PaymentDetails.fromMap(Map<String, dynamic>.from(data['payment']));
+      if (data['transportation'] != null) {
+        _transportation = Transportation.fromMap(Map<String, dynamic>.from(data['transportation']));
       }
       setState(() {});
     }
@@ -204,6 +214,8 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   @override
   void dispose() {
     _custCodeController.dispose();
+    _dateController.dispose();
+    _fyearController.dispose();
     _partyNameController.dispose();
     _addressController.dispose();
     _phoneController.dispose();
@@ -246,6 +258,12 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Customer Code, Date, Financial Year - Read-only fields at top
+              _buildSectionHeader('Entry Info'),
+              _buildReadOnlyField('Customer Code', _custCodeController),
+              _buildTextField('Date', _dateController),
+              _buildReadOnlyField('Financial Year', _fyearController),
+              const SizedBox(height: 24),
               _buildSectionHeader('Customer Details'),
               _buildTextField('Party Name', _partyNameController, required: true),
               _buildTextField('Phone', _phoneController, keyboardType: TextInputType.phone, required: true),
@@ -267,6 +285,41 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               const SizedBox(height: 24),
               _buildSectionHeader('Booking Info'),
               _buildBookingSection(),
+              const SizedBox(height: 24),
+
+              // Transportation Details Button
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final result = await Navigator.push<Transportation>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => TransportationDetailsScreen(
+                        initialData: _transportation,
+                      ),
+                    ),
+                  );
+                  if (result != null && mounted) {
+                    setState(() {
+                      _transportation = result;
+                    });
+                  }
+                },
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  foregroundColor: AppColors.ember,
+                  side: const BorderSide(color: AppColors.ember),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.local_shipping),
+                label: Text(
+                  _transportation != null && !_transportation!.isEmpty
+                      ? 'Transportation Details (Added)'
+                      : 'Transportation Details',
+                ),
+              ),
+
               const SizedBox(height: 32),
               ElevatedButton(
                 onPressed: _isSaving ? null : _saveChallan,
@@ -316,6 +369,30 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
         validator: required ? (v) => v == null || v.isEmpty ? '$label required' : null : null,
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyField(String label, TextEditingController controller) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextFormField(
+        controller: controller,
+        readOnly: true,
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          color: AppColors.ink,
+        ),
+        decoration: InputDecoration(
+          labelText: label,
+          filled: true,
+          fillColor: Colors.grey[100],
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          disabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Colors.grey),
+          ),
+        ),
       ),
     );
   }
@@ -459,12 +536,14 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           firstDate: DateTime(2020),
           lastDate: DateTime(2030),
         );
-        if (pickedDate != null) {
+        if (pickedDate != null && mounted) {
           final pickedTime = await showTimePicker(
             context: context,
             initialTime: time ?? TimeOfDay.now(),
           );
-          onChanged(pickedDate, pickedTime);
+          if (mounted) {
+            onChanged(pickedDate, pickedTime);
+          }
         }
       },
       child: InputDecorator(
@@ -586,10 +665,10 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
       // Build the data map
       final data = {
-        'fyear': _fyear,
+        'fyear': _fyearController.text,
         'custCode': _custCodeController.text,
         'partyName': _partyNameController.text.trim(),
-        'sDate': _date,
+        'sDate': _dateController.text,
         'address': _addressController.text.trim(),
         'smsPhone': _phoneController.text.trim(),
         'aadharNo': _aadharController.text.trim(),
@@ -657,6 +736,11 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       // Add kilometer details
       if (_kilometerDetails != null) {
         data['kilometerDetails'] = _kilometerDetails!.toMap();
+      }
+
+      // Add transportation details inside the Challan document
+      if (_transportation != null && !_transportation!.isEmpty) {
+        data['transportation'] = _transportation!.toMap();
       }
 
       // Save to Firestore

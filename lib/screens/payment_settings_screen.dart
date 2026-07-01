@@ -17,6 +17,7 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
       .collection('paymentSettings')
       .doc('qrCodes')
       .collection('codes');
+  // ignore: unused_field
   final _uuid = const Uuid();
 
   @override
@@ -114,6 +115,7 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
           } else {
             await _qrCollection.doc(qrCode.id).set(qrCode.toMap());
           }
+          // ignore: use_build_context_synchronously
           if (mounted) Navigator.pop(context);
         },
       ),
