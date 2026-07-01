@@ -1,8 +1,14 @@
 {
   "permissions": {
     "allow": [
+<<<<<<< HEAD
       "Bash(ls -la f:/Github/Yatin-Bike-Rent/android/*.gradle*)",
       "Bash(dir f:\\\\Github\\\\Yatin-Bike-Rent\\\\android\\\\*.gradle*)"
+=======
+      "Bash(flutter analyze lib/screens/login_screen.dart)",
+      "Bash(python3 -c \":*)",
+      "Bash(flutter analyze lib/staff/challan_form.dart lib/staff/staff_dashboard.dart)"
+>>>>>>> 29f933a1a9bd67c17cf5294029992769b084c8a1
     ]
   }
 }

@@ -165,7 +165,7 @@ class _SplashScreenState extends State<SplashScreen>
                     child: Column(
                       children: [
                         Text(
-                          'YATIN',
+                          'StreetBike',
                           style: TextStyle(
                             fontSize: 48,
                             fontWeight: FontWeight.w900,
@@ -182,7 +182,7 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'BIKE RENT',
+                          'Rental',
                           style: TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.w700,

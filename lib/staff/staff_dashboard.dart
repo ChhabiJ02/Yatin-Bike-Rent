@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/booking.dart';
+import '../models/transportation_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/rental_service.dart';
 import '../widgets/user_app_bar_title.dart';
@@ -16,9 +17,48 @@ class StaffDashboard extends StatefulWidget {
 }
 
 class _StaffDashboardState extends State<StaffDashboard> {
+  final _customersCollection = FirebaseFirestore.instance.collection('customers');
 
   void _openEntryForm() {
     ChallanForm.show(context);
+  }
+
+  void _openEditForm(String custCode) async {
+    final doc = await _customersCollection.doc(custCode).get();
+    if (doc.exists) {
+      final data = doc.data()!;
+      final transportationData = data['transportation'] != null
+          ? Transportation.fromMap(Map<String, dynamic>.from(data['transportation']))
+          : null;
+
+      await ChallanForm.showForEdit(
+        context,
+        custCode: custCode,
+        partyName: data['partyName'] ?? '',
+        address: data['address'] ?? '',
+        address2: data['address2'] ?? '',
+        landmark: data['landmark'] ?? '',
+        area: data['area'] ?? '',
+        city: data['city'] ?? '',
+        pincode: data['pincode'] ?? '',
+        smsPhone: data['smsPhone'] ?? '',
+        reference: data['reference'] ?? '',
+        aadharNo: data['aadharNo'] ?? '',
+        licenceNo: data['licenceNo'] ?? '',
+        remark: data['remark'] ?? '',
+        fineRs: data['fineRs'] ?? '',
+        returnDate: data['returnDate'] ?? '',
+        vehicleName: data['vehicleName'] ?? '',
+        days: data['days'] ?? '',
+        rate: data['rate'] ?? '',
+        billAmount: data['billAmount'] ?? '',
+        pickupRs: data['pickupRs'] ?? '',
+        dropRs: data['dropRs'] ?? '',
+        extraP: data['extraP'] ?? '',
+        helmet: data['helmet'] ?? '',
+        transportation: transportationData,
+      );
+    }
   }
 
   @override
@@ -155,6 +195,45 @@ class _StaffDashboardState extends State<StaffDashboard> {
               ),
               const SizedBox(height: 24),
               const Text(
+                'Customer Entries',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
+              ),
+              StreamBuilder(
+                stream: _customersCollection.orderBy('sDate', descending: true).snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: Padding(padding: EdgeInsets.all(12), child: SizedBox(height:24,width:24,child:CircularProgressIndicator(strokeWidth:2.5))));
+                  }
+                  final docs = snapshot.data?.docs ?? [];
+                  if (docs.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Text('No customer entries available.', style: TextStyle(color: AppColors.muted)),
+                    );
+                  }
+                  return Column(
+                    children: docs.map((doc) {
+                      final data = doc.data();
+                      return _CustomerEntryCard(
+                        custCode: doc.id,
+                        partyName: data['partyName'] ?? '',
+                        vehicleName: data['vehicleName'] ?? '',
+                        sDate: data['sDate'] ?? '',
+                        returnDate: data['returnDate'] ?? '',
+                        days: data['days'] ?? '',
+                        rate: data['rate'] ?? '',
+                        billAmount: data['billAmount'] ?? '',
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
+              const Text(
                 'Recent Bookings',
                 style: TextStyle(
                   fontSize: 20,
@@ -211,6 +290,120 @@ class _StaffDashboardState extends State<StaffDashboard> {
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add_business),
         label: const Text('New Entry'),
+      ),
+    );
+  }
+}
+
+class _CustomerEntryCard extends StatelessWidget {
+  final String custCode;
+  final String partyName;
+  final String vehicleName;
+  final String sDate;
+  final String returnDate;
+  final String days;
+  final String rate;
+  final String billAmount;
+
+  const _CustomerEntryCard({
+    required this.custCode,
+    required this.partyName,
+    required this.vehicleName,
+    required this.sDate,
+    required this.returnDate,
+    required this.days,
+    required this.rate,
+    required this.billAmount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(18),
+      decoration: AppTheme.softCard(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 25,
+                backgroundColor: AppColors.ember.withValues(alpha: 0.16),
+                child: const Icon(Icons.person, color: AppColors.ember),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      partyName.isNotEmpty ? partyName : 'Customer',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Code: $custCode',
+                      style: const TextStyle(color: AppColors.muted),
+                    ),
+                  ],
+                ),
+              ),
+              Chip(
+                label: Text(vehicleName.isNotEmpty ? vehicleName : 'Vehicle'),
+                backgroundColor: AppColors.ember.withValues(alpha: 0.12),
+                labelStyle: const TextStyle(
+                  color: AppColors.ember,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Icon(Icons.calendar_month, size: 18, color: AppColors.muted),
+              const SizedBox(width: 8),
+              Text('$sDate - $returnDate', style: const TextStyle(color: AppColors.muted)),
+              const SizedBox(width: 16),
+              const Icon(Icons.timer, size: 18, color: AppColors.muted),
+              const SizedBox(width: 8),
+              Text('$days days', style: const TextStyle(color: AppColors.muted)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Icon(Icons.currency_rupee, size: 18, color: AppColors.muted),
+              const SizedBox(width: 8),
+              Text(billAmount.isNotEmpty ? billAmount : '0', style: const TextStyle(color: AppColors.muted)),
+              const SizedBox(width: 16),
+              const Text('Rate: ', style: TextStyle(color: AppColors.muted)),
+              Text(rate.isNotEmpty ? rate : '0', style: const TextStyle(color: AppColors.muted)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () {
+                  context.findAncestorStateOfType<_StaffDashboardState>()?._openEditForm(custCode);
+                },
+                icon: const Icon(Icons.edit, size: 18),
+                label: const Text('Edit'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.ember,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

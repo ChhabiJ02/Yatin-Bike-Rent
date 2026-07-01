@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../models/transportation_model.dart';
+import '../screens/transportation_details_screen.dart';
 import '../theme/app_theme.dart';
 
 class ChallanEntry {
@@ -29,6 +31,7 @@ class ChallanEntry {
   final String dropRs;
   final String extraP;
   final String helmet;
+  final Transportation? transportation;
 
   ChallanEntry({
     required this.fyear,
@@ -56,10 +59,11 @@ class ChallanEntry {
     required this.dropRs,
     required this.extraP,
     required this.helmet,
+    this.transportation,
   });
 
   Map<String, dynamic> toMap() {
-    return {
+    final map = {
       'fyear': fyear,
       'custCode': custCode,
       'partyName': partyName,
@@ -87,18 +91,19 @@ class ChallanEntry {
       'helmet': helmet,
       'createdAt': FieldValue.serverTimestamp(),
     };
+
+    // Include transportation data inside the Challan document
+    if (transportation != null && !transportation!.isEmpty) {
+      map['transportation'] = transportation!.toMap();
+    }
+
+    return map;
   }
 }
 
 class ChallanForm {
   static final CollectionReference<Map<String, dynamic>> _customersCollection =
       FirebaseFirestore.instance.collection('customers');
-  static final CollectionReference<Map<String, dynamic>> _challansCollection =
-      FirebaseFirestore.instance.collection('challans');
-  static final CollectionReference<Map<String, dynamic>>
-  _transactionalDetailsCollection = FirebaseFirestore.instance.collection(
-    'transactional_details',
-  );
 
   static Future<bool> show(BuildContext context) async {
     final result = await showModalBottomSheet<bool>(
@@ -106,7 +111,70 @@ class ChallanForm {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return const _ChallanFormWidget();
+        return _ChallanFormWidget();
+      },
+    );
+    return result ?? false;
+  }
+
+  static Future<bool> showForEdit(
+    BuildContext context, {
+    required String custCode,
+    required String partyName,
+    required String address,
+    required String address2,
+    required String landmark,
+    required String area,
+    required String city,
+    required String pincode,
+    required String smsPhone,
+    required String reference,
+    required String aadharNo,
+    required String licenceNo,
+    required String remark,
+    required String fineRs,
+    required String returnDate,
+    required String vehicleName,
+    required String days,
+    required String rate,
+    required String billAmount,
+    required String pickupRs,
+    required String dropRs,
+    required String extraP,
+    required String helmet,
+    Transportation? transportation,
+  }) async {
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return _ChallanFormWidget.forEdit(
+          custCode: custCode,
+          partyName: partyName,
+          address: address,
+          address2: address2,
+          landmark: landmark,
+          area: area,
+          city: city,
+          pincode: pincode,
+          smsPhone: smsPhone,
+          reference: reference,
+          aadharNo: aadharNo,
+          licenceNo: licenceNo,
+          remark: remark,
+          fineRs: fineRs,
+          returnDate: returnDate,
+          vehicleName: vehicleName,
+          days: days,
+          rate: rate,
+          billAmount: billAmount,
+          pickupRs: pickupRs,
+          dropRs: dropRs,
+          extraP: extraP,
+          helmet: helmet,
+          transportation: transportation,
+        );
       },
     );
     return result ?? false;
@@ -120,8 +188,61 @@ class _CustomerCodeResult {
   _CustomerCodeResult(this.prefix, this.maxId);
 }
 
+// ignore: must_be_immutable
 class _ChallanFormWidget extends StatefulWidget {
-  const _ChallanFormWidget();
+  String? custCode;
+  String? partyName;
+  String? address;
+  String? address2;
+  String? landmark;
+  String? area;
+  String? city;
+  String? pincode;
+  String? smsPhone;
+  String? reference;
+  String? aadharNo;
+  String? licenceNo;
+  String? remark;
+  String? fineRs;
+  String? returnDate;
+  String? vehicleName;
+  String? days;
+  String? rate;
+  String? billAmount;
+  String? pickupRs;
+  String? dropRs;
+  String? extraP;
+  String? helmet;
+  Transportation? transportation;
+
+  _ChallanFormWidget();
+
+  _ChallanFormWidget.forEdit({
+    this.custCode,
+    this.partyName,
+    this.address,
+    this.address2,
+    this.landmark,
+    this.area,
+    this.city,
+    this.pincode,
+    this.smsPhone,
+    this.reference,
+    this.aadharNo,
+    this.licenceNo,
+    this.remark,
+    this.fineRs,
+    this.returnDate,
+    this.vehicleName,
+    this.days,
+    this.rate,
+    this.billAmount,
+    this.pickupRs,
+    this.dropRs,
+    this.extraP,
+    this.helmet,
+    this.transportation,
+  });
 
   @override
   State<_ChallanFormWidget> createState() => _ChallanFormWidgetState();
@@ -156,14 +277,53 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
   final extraController = TextEditingController();
   final helmetController = TextEditingController();
 
+  // Transportation data stored in memory
+  Transportation? _transportationData;
+  bool _isEditMode = false;
+
   @override
   void initState() {
     super.initState();
-    final fyear = _currentFinancialYear();
-    fyearController.text = fyear;
-    dateController.text = _formatChallanDateTime(DateTime.now());
-    customerCodeController.text = '';
-    _loadNextCustomerCode(fyear);
+
+    // Check if in edit mode
+    _isEditMode = widget.custCode != null && widget.custCode!.isNotEmpty;
+
+    if (_isEditMode) {
+      // Populate fields for edit mode
+      customerCodeController.text = widget.custCode ?? '';
+      fyearController.text = _currentFinancialYear();
+      dateController.text = _formatChallanDateTime(DateTime.now());
+      partyNameController.text = widget.partyName ?? '';
+      addressController.text = widget.address ?? '';
+      address2Controller.text = widget.address2 ?? '';
+      landmarkController.text = widget.landmark ?? '';
+      areaController.text = widget.area ?? '';
+      cityController.text = widget.city ?? '';
+      pincodeController.text = widget.pincode ?? '';
+      smsPhoneController.text = widget.smsPhone ?? '';
+      referenceController.text = widget.reference ?? '';
+      aadharController.text = widget.aadharNo ?? '';
+      licenceController.text = widget.licenceNo ?? '';
+      remarkController.text = widget.remark ?? '';
+      fineController.text = widget.fineRs ?? '';
+      returnDateController.text = widget.returnDate ?? '';
+      vehicleController.text = widget.vehicleName ?? '';
+      daysController.text = widget.days ?? '';
+      rateController.text = widget.rate ?? '';
+      billAmountController.text = widget.billAmount ?? '';
+      pickupController.text = widget.pickupRs ?? '';
+      dropController.text = widget.dropRs ?? '';
+      extraController.text = widget.extraP ?? '';
+      helmetController.text = widget.helmet ?? '';
+      _transportationData = widget.transportation;
+    } else {
+      // New entry mode
+      final fyear = _currentFinancialYear();
+      fyearController.text = fyear;
+      dateController.text = _formatChallanDateTime(DateTime.now());
+      customerCodeController.text = '';
+      _loadNextCustomerCode(fyear);
+    }
   }
 
   String _twoDigits(int value) => value.toString().padLeft(2, '0');
@@ -453,38 +613,22 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
   }
 
   Future<void> _saveChallanEntry(ChallanEntry entry) async {
-    final data = entry.toMap();
-    final transactionalData = {
-      'custCode': entry.custCode,
-      'partyName': entry.partyName,
-      'vehicleName': entry.vehicleName,
-      'sDate': entry.sDate,
-      'returnDate': entry.returnDate,
-      'days': entry.days,
-      'rate': entry.rate,
-      'billAmount': entry.billAmount,
-      'pickupRs': entry.pickupRs,
-      'dropRs': entry.dropRs,
-      'extraP': entry.extraP,
-      'helmet': entry.helmet,
-      'fineRs': entry.fineRs,
-      'remark': entry.remark,
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
+    try {
+      final data = entry.toMap();
+      debugPrint('Saving Challan with transportation: ${entry.transportation?.toMap()}');
 
-    final batch = FirebaseFirestore.instance.batch();
-    batch.set(ChallanForm._customersCollection.doc(entry.custCode), data);
-    batch.set(ChallanForm._challansCollection.doc(entry.custCode), data);
-    batch.set(
-      ChallanForm._transactionalDetailsCollection.doc(entry.custCode),
-      transactionalData,
-      SetOptions(merge: true),
-    );
-    await batch.commit();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Challan saved successfully.')),
-    );
+      // Save only to customers collection
+      await ChallanForm._customersCollection.doc(entry.custCode).set(data);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Challan saved successfully.')),
+      );
+    } catch (e) {
+      debugPrint('Error saving Challan: $e');
+      if (!mounted) return;
+      rethrow;
+    }
   }
 
   @override
@@ -529,29 +673,31 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                         gradient: AppColors.heroGradient,
                         borderRadius: BorderRadius.circular(24),
                       ),
-                      child: const Row(
+                      child: Row(
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.edit_document,
                             color: Colors.white,
                             size: 34,
                           ),
-                          SizedBox(width: 14),
+                          const SizedBox(width: 14),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Challan Entry',
-                                  style: TextStyle(
+                                  _isEditMode ? 'Edit Challan' : 'Challan Entry',
+                                  style: const TextStyle(
                                     fontSize: 22,
                                     fontWeight: FontWeight.w900,
                                     color: Colors.white,
                                   ),
                                 ),
-                                SizedBox(height: 6),
+                                const SizedBox(height: 6),
                                 Text(
-                                  'Fill in customer and booking details.',
+                                  _isEditMode
+                                      ? 'Update customer and booking details.'
+                                      : 'Fill in customer and booking details.',
                                   style: TextStyle(
                                     color: Colors.white,
                                     height: 1.35,
@@ -703,10 +849,34 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                     Row(
                       children: [
                         Expanded(
-                          child: _buildTextField(
-                            'Vehicle Name',
-                            vehicleController,
-                            required: true,
+                          child: DropdownButtonFormField<String>(
+                            initialValue: vehicleController.text.isEmpty ? null : vehicleController.text,
+                            decoration: InputDecoration(
+                              labelText: 'Vehicle Name',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 16,
+                              ),
+                            ),
+                            items: const [
+                              DropdownMenuItem(value: 'Activa', child: Text('Activa')),
+                              DropdownMenuItem(value: 'Access', child: Text('Access')),
+                              DropdownMenuItem(value: 'Splendor', child: Text('Splendor')),
+                              DropdownMenuItem(value: 'Honda Shine', child: Text('Honda Shine')),
+                              DropdownMenuItem(value: 'Classic 350', child: Text('Classic 350')),
+                            ],
+                            onChanged: (value) {
+                              vehicleController.text = value ?? '';
+                            },
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Vehicle Name is required';
+                              }
+                              return null;
+                            },
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -761,51 +931,104 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                     ElevatedButton(
                       onPressed: () async {
                         if (!(_formKey.currentState?.validate() ?? false)) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Please fill all required fields'),
+                            ),
+                          );
                           return;
                         }
 
-                        final navigator = Navigator.of(context);
-                        final entry = ChallanEntry(
-                          fyear: fyearController.text.trim(),
-                          custCode: customerCodeController.text.trim(),
-                          partyName: partyNameController.text.trim(),
-                          sDate: dateController.text.trim(),
-                          address: addressController.text.trim(),
-                          address2: address2Controller.text.trim(),
-                          landmark: landmarkController.text.trim(),
-                          area: areaController.text.trim(),
-                          city: cityController.text.trim(),
-                          pincode: pincodeController.text.trim(),
-                          smsPhone: smsPhoneController.text.trim(),
-                          reference: referenceController.text.trim(),
-                          aadharNo: aadharController.text.trim(),
-                          licenceNo: licenceController.text.trim(),
-                          remark: remarkController.text.trim(),
-                          fineRs: fineController.text.trim(),
-                          returnDate: returnDateController.text.trim(),
-                          vehicleName: vehicleController.text.trim(),
-                          days: daysController.text.trim(),
-                          rate: rateController.text.trim(),
-                          billAmount: billAmountController.text.trim(),
-                          pickupRs: pickupController.text.trim(),
-                          dropRs: dropController.text.trim(),
-                          extraP: extraController.text.trim(),
-                          helmet: helmetController.text.trim(),
-                        );
+                        try {
+                          final navigator = Navigator.of(context);
+                          final entry = ChallanEntry(
+                            fyear: fyearController.text.trim(),
+                            custCode: customerCodeController.text.trim(),
+                            partyName: partyNameController.text.trim(),
+                            sDate: dateController.text.trim(),
+                            address: addressController.text.trim(),
+                            address2: address2Controller.text.trim(),
+                            landmark: landmarkController.text.trim(),
+                            area: areaController.text.trim(),
+                            city: cityController.text.trim(),
+                            pincode: pincodeController.text.trim(),
+                            smsPhone: smsPhoneController.text.trim(),
+                            reference: referenceController.text.trim(),
+                            aadharNo: aadharController.text.trim(),
+                            licenceNo: licenceController.text.trim(),
+                            remark: remarkController.text.trim(),
+                            fineRs: fineController.text.trim(),
+                            returnDate: returnDateController.text.trim(),
+                            vehicleName: vehicleController.text.trim(),
+                            days: daysController.text.trim(),
+                            rate: rateController.text.trim(),
+                            billAmount: billAmountController.text.trim(),
+                            pickupRs: pickupController.text.trim(),
+                            dropRs: dropController.text.trim(),
+                            extraP: extraController.text.trim(),
+                            helmet: helmetController.text.trim(),
+                            transportation: _transportationData,
+                          );
 
-                        await _saveChallanEntry(entry);
-                        if (!mounted) return;
-                        navigator.pop(true);
+                          await _saveChallanEntry(entry);
+                          if (!mounted) return;
+                          navigator.pop(true);
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error saving: $e')),
+                          );
+                        }
                       },
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: AppColors.ember,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
                       child: const Text(
                         'Save Challan',
-                        style: TextStyle(fontSize: 16),
+                        style: TextStyle(fontSize: 16, color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      onPressed: () async {
+                        final result = await Navigator.push<Transportation>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => TransportationDetailsScreen(
+                              initialData: _transportationData,
+                            ),
+                          ),
+                        );
+                        if (result != null && mounted) {
+                          setState(() {
+                            _transportationData = result;
+                          });
+                        }
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        foregroundColor: AppColors.ink,
+                        side: const BorderSide(color: AppColors.ember),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.local_shipping, size: 20, color: AppColors.ember),
+                          const SizedBox(width: 8),
+                          Text(
+                            _transportationData != null && !_transportationData!.isEmpty
+                                ? 'Transportation Details (Added)'
+                                : 'Transportation Details',
+                            style: TextStyle(fontSize: 16, color: AppColors.ember),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 16),
