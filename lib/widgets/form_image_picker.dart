@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../theme/app_theme.dart';
@@ -134,11 +135,13 @@ class _FormImagePickerState extends State<FormImagePicker> {
                     },
                     errorBuilder: (_, _, _) => _buildPlaceholder(),
                   )
-                : Image.file(
-                    File(_localPath!),
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => _buildPlaceholder(),
-                  ),
+                : kIsWeb
+                    ? _buildPlaceholder()
+                    : Image.file(
+                        File(_localPath!),
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => _buildPlaceholder(),
+                      ),
           ),
           Positioned(
             top: 8,
@@ -275,7 +278,7 @@ class _FormImagePickerState extends State<FormImagePicker> {
         });
 
         final url = await StorageService.uploadImage(
-          File(pickedFile.path),
+          pickedFile,
           folder: widget.folder,
           onProgress: (progress) {
             if (mounted) {

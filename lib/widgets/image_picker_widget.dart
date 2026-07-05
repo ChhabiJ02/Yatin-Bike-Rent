@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../theme/app_theme.dart';
@@ -77,11 +78,13 @@ class ImagePickerWidget extends StatelessWidget {
                     fit: BoxFit.cover,
                     errorBuilder: (_, _, _) => _buildPlaceholder(),
                   )
-                : Image.file(
-                    File(imageUrl!),
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => _buildPlaceholder(),
-                  ),
+                : kIsWeb
+                    ? _buildPlaceholder()
+                    : Image.file(
+                        File(imageUrl!),
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => _buildPlaceholder(),
+                      ),
           ),
           Positioned(
             top: 8,
@@ -244,9 +247,8 @@ class ImagePickerWidget extends StatelessWidget {
           );
         }
 
-        // Upload to Firebase Storage
         final url = await StorageService.uploadImage(
-          File(pickedFile.path),
+          pickedFile,
           folder: folder,
           onProgress: onUploadProgress,
         );

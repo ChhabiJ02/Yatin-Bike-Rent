@@ -1,20 +1,23 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 /// Service for managing Challan counters and transactional operations
 class ChallanService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  /// Calculate the current financial year based on today's date
-  /// FY starts on April 1 and ends on March 31
-  static String getCurrentFinancialYear() {
-    final now = DateTime.now();
-    final currentYear = now.year;
+  /// Calculate the financial year for a given date.
+  /// FY starts on April 1 and ends on March 31.
+  static String getFinancialYearForDate(DateTime date) {
+    final currentYear = date.year;
     final fiscalYearStart = DateTime(currentYear, 4, 1);
-    if (now.isBefore(fiscalYearStart)) {
+    if (date.isBefore(fiscalYearStart)) {
       return '${currentYear - 1}-$currentYear';
     }
     return '$currentYear-${currentYear + 1}';
   }
+
+  /// Calculate the current financial year based on today's date.
+  static String getCurrentFinancialYear() => getFinancialYearForDate(DateTime.now());
 
   /// Generate the financial year prefix (e.g., "2627" for FY 2026-2027)
   static String getFinancialYearPrefix(String fyear) {
@@ -27,45 +30,108 @@ class ChallanService {
     return '';
   }
 
-  /// Generate the next unique Customer Code using a counter with transaction
+  /// Build a customer code for a given financial year and counter value.
+  static String buildCustomerCode(String financialYear, int currentNumber) {
+    final prefix = getFinancialYearPrefix(financialYear);
+    final numberStr = currentNumber.toString().padLeft(4, '0');
+    return '$prefix$numberStr';
+  }
+
+  /// Derive the next customer code from the highest existing code in the same financial year.
+  static String getNextCustomerCodeFromHighest(String financialYear, String? highestCustCode) {
+    final prefix = getFinancialYearPrefix(financialYear);
+    debugPrint('Current Financial Year: $financialYear');
+    debugPrint('Current Prefix: $prefix');
+
+    if (highestCustCode == null || highestCustCode.trim().isEmpty) {
+      final generatedCode = buildCustomerCode(financialYear, 1);
+      debugPrint('Last Customer Code found: none');
+      debugPrint('Newly Generated Customer Code: $generatedCode');
+      return generatedCode;
+    }
+
+    final normalizedCode = highestCustCode.trim();
+    final match = RegExp('^$prefix(\\d{4})').firstMatch(normalizedCode);
+
+    if (match == null) {
+      final generatedCode = buildCustomerCode(financialYear, 1);
+      debugPrint('Last Customer Code found: $normalizedCode');
+      debugPrint('Newly Generated Customer Code: $generatedCode');
+      return generatedCode;
+    }
+
+    final currentNumber = int.parse(match.group(1)!);
+    final generatedCode = buildCustomerCode(financialYear, currentNumber + 1);
+    debugPrint('Last Customer Code found: $normalizedCode');
+    debugPrint('Newly Generated Customer Code: $generatedCode');
+    return generatedCode;
+  }
+
+  /// Generate the next unique Customer Code by reading the existing customers collection.
   /// Format: [Prefix][4-digit-running-number] e.g., 26270001
   static Future<String> generateCustomerCode() async {
-    final fyear = getCurrentFinancialYear();
-    final prefix = getFinancialYearPrefix(fyear);
-    final counterRef = _db.collection('counters').doc('customerCode');
+    return generateCustomerCodeForFinancialYear(getCurrentFinancialYear());
+  }
+
+  /// Generate the next unique Customer Code for a specific financial year.
+  static Future<String> generateCustomerCodeForFinancialYear(String fyear) async {
+    final highestCustCode = await _findHighestCustomerCodeForFinancialYear(fyear);
+    return getNextCustomerCodeFromHighest(fyear, highestCustCode);
+  }
+
+  static Future<String?> _findHighestCustomerCodeForFinancialYear(String fyear) async {
+    final snapshot = await _db
+        .collection('customers')
+        .where('fyear', isEqualTo: fyear)
+        .get();
+
+    String? highestCustCode;
+    for (final doc in snapshot.docs) {
+      final custCode = doc.data()['custCode']?.toString();
+      if (custCode == null || custCode.trim().isEmpty) {
+        continue;
+      }
+      if (highestCustCode == null || custCode.compareTo(highestCustCode) > 0) {
+        highestCustCode = custCode;
+      }
+    }
+    return highestCustCode;
+  }
+
+  /// Atomically generate the next unique Customer Code for a specific financial year
+  /// using a counter document to avoid race conditions when multiple clients
+  /// create customers simultaneously.
+  /// Counter doc path: `counters/customerCounter_<fyear>` with `currentNumber` int.
+  static Future<String> generateCustomerCodeWithTransaction(String fyear) async {
+    final counterRef = _db.collection('counters').doc('customerCounter_$fyear');
+
+    final highestCustCode = await _findHighestCustomerCodeForFinancialYear(fyear);
+    int highestNumber = 0;
+    if (highestCustCode != null && highestCustCode.isNotEmpty) {
+      final prefix = getFinancialYearPrefix(fyear);
+      final match = RegExp('^${RegExp.escape(prefix)}(\\d{4})').firstMatch(highestCustCode.trim());
+      if (match != null) {
+        highestNumber = int.parse(match.group(1)!);
+      }
+    }
 
     return _db.runTransaction<String>((transaction) async {
       final counterDoc = await transaction.get(counterRef);
 
-      int currentNumber = 1;
-      String storedFyear = fyear;
-
+      int currentNumber = 0;
       if (counterDoc.exists) {
-        storedFyear = counterDoc.data()?['financialYear'] as String? ?? fyear;
-        // If financial year changed, reset counter to 1
-        if (storedFyear != fyear) {
-          currentNumber = 1;
-          storedFyear = fyear;
-        } else {
-          currentNumber = (counterDoc.data()?['currentNumber'] as int?) ?? 0;
-          currentNumber++;
-        }
+        currentNumber = (counterDoc.data()?['currentNumber'] as int?) ?? 0;
       }
 
-      // Update the counter with new values
-      transaction.set(
-        counterRef,
-        {
-          'currentNumber': currentNumber,
-          'financialYear': storedFyear,
-          'prefix': prefix,
-        },
-        SetOptions(merge: true),
-      );
+      if (currentNumber < highestNumber) {
+        currentNumber = highestNumber;
+      }
 
-      // Format: [Prefix][4-digit-number] e.g., 26270001
-      final numberStr = currentNumber.toString().padLeft(4, '0');
-      return '$prefix$numberStr';
+      currentNumber++;
+
+      transaction.set(counterRef, {'currentNumber': currentNumber, 'fyear': fyear}, SetOptions(merge: true));
+
+      return buildCustomerCode(fyear, currentNumber);
     });
   }
 

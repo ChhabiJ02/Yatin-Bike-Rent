@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../admin/admin_dashboard.dart';
 import '../customer/customer_dashboard.dart';
@@ -21,6 +23,8 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _logoScale;
   late Animation<double> _logoRotate;
   late Animation<double> _textOpacity;
+  Timer? _textTimer;
+  Timer? _routeTimer;
 
   @override
   void initState() {
@@ -59,11 +63,13 @@ class _SplashScreenState extends State<SplashScreen>
 
     // Start animations in sequence
     _logoController.forward();
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (mounted) _textController.forward();
+    _textTimer = Timer(const Duration(milliseconds: 800), () {
+      if (mounted) {
+        _textController.forward();
+      }
     });
 
-    Future.delayed(const Duration(seconds: 4), _routeAfterSplash);
+    _routeTimer = Timer(const Duration(seconds: 4), _routeAfterSplash);
   }
 
   Future<void> _routeAfterSplash() async {
@@ -109,6 +115,8 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
+    _textTimer?.cancel();
+    _routeTimer?.cancel();
     _logoController.dispose();
     _textController.dispose();
     _loadingController.dispose();
@@ -118,172 +126,172 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(gradient: AppColors.splashGradient),
-        child: Stack(
-          children: [
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Logo with advanced animations
-                  ScaleTransition(
-                    scale: _logoScale,
-                    child: RotationTransition(
-                      turns: _logoRotate,
-                      child: Container(
-                        width: 270,
-                        height: 270,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.ember.withValues(alpha: 0.42),
-                              blurRadius: 30,
-                              spreadRadius: 10,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Container(
+                width: double.infinity,
+                height: constraints.maxHeight,
+                decoration: const BoxDecoration(gradient: AppColors.splashGradient),
+                child: Stack(
+                  children: [
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minHeight: constraints.maxHeight,
                             ),
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.3),
-                              blurRadius: 20,
-                              spreadRadius: 5,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                ScaleTransition(
+                                  scale: _logoScale,
+                                  child: RotationTransition(
+                                    turns: _logoRotate,
+                                    child: Container(
+                                      width: 270,
+                                      height: 270,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: AppColors.ember.withValues(alpha: 0.42),
+                                            blurRadius: 30,
+                                            spreadRadius: 10,
+                                          ),
+                                          BoxShadow(
+                                            color: Colors.black.withValues(alpha: 0.3),
+                                            blurRadius: 20,
+                                            spreadRadius: 5,
+                                          ),
+                                        ],
+                                      ),
+                                      child: Image.asset(
+                                        'assets/logos/png/logo1.png',
+                                        fit: BoxFit.contain,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 36),
+                                FadeTransition(
+                                  opacity: _textOpacity,
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        'StreetBike Rental',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 48,
+                                          fontWeight: FontWeight.w900,
+                                          color: Colors.white,
+                                          letterSpacing: 4,
+                                          shadows: [
+                                            Shadow(
+                                              blurRadius: 15,
+                                              color: Colors.black.withValues(alpha: 0.5),
+                                              offset: const Offset(2, 4),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Container(
+                                        width: 60,
+                                        height: 4,
+                                        decoration: BoxDecoration(
+                                          gradient: AppColors.heroGradient,
+                                          borderRadius: BorderRadius.circular(2),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.orange.withValues(alpha: 0.5),
+                                              blurRadius: 8,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 40),
+                                FadeTransition(
+                                  opacity: _textOpacity,
+                                  child: Column(
+                                    children: [
+                                      RotationTransition(
+                                        turns: Tween(
+                                          begin: 0.0,
+                                          end: 1.0,
+                                        ).animate(_loadingController),
+                                        child: Container(
+                                          width: 50,
+                                          height: 50,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: Colors.white.withValues(alpha: 0.3),
+                                              width: 3,
+                                            ),
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(3),
+                                            child: CircularProgressIndicator(
+                                              valueColor: AlwaysStoppedAnimation<Color>(
+                                                Colors.orange.shade300,
+                                              ),
+                                              strokeWidth: 3,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      Text(
+                                        'Loading...',
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(alpha: 0.8),
+                                          fontSize: 14,
+                                          letterSpacing: 2,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: Image.asset(
-                          'assets/logos/png/logo1.png',
-                          fit: BoxFit.contain,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 50),
-                  // App name with fade animation
-                  FadeTransition(
-                    opacity: _textOpacity,
-                    child: Column(
-                      children: [
-                        Text(
-                          'StreetBike',
-                          style: TextStyle(
-                            fontSize: 48,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            letterSpacing: 4,
-                            shadows: [
-                              Shadow(
-                                blurRadius: 15,
-                                color: Colors.black.withValues(alpha: 0.5),
-                                offset: const Offset(2, 4),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Rental',
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.amber,
-                            letterSpacing: 3,
-                            shadows: [
-                              Shadow(
-                                blurRadius: 15,
-                                color: Colors.black.withValues(alpha: 0.5),
-                                offset: const Offset(2, 4),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Container(
-                          width: 60,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            gradient: AppColors.heroGradient,
-                            borderRadius: BorderRadius.circular(2),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.orange.withValues(alpha: 0.5),
-                                blurRadius: 8,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 70),
-                  // Custom loading indicator
-                  FadeTransition(
-                    opacity: _textOpacity,
-                    child: Column(
-                      children: [
-                        RotationTransition(
-                          turns: Tween(
-                            begin: 0.0,
-                            end: 1.0,
-                          ).animate(_loadingController),
-                          child: Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.3),
-                                width: 3,
-                              ),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(3),
-                              child: CircularProgressIndicator(
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.orange.shade300,
-                                ),
-                                strokeWidth: 3,
-                              ),
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 30.0),
+                        child: FadeTransition(
+                          opacity: _textOpacity,
+                          child: Text(
+                            "Made by Rex Solution'S",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.75),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 1,
                             ),
                           ),
                         ),
-                        const SizedBox(height: 20),
-                        Text(
-                          'Loading...',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.8),
-                            fontSize: 14,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            // Anchored "Made by" text
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 30.0),
-                child: FadeTransition(
-                  opacity: _textOpacity,
-                  child: Text(
-                    "Made by Rex Solution'S",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.75),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1,
-                    ),
-                  ),
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

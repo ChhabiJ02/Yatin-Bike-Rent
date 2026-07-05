@@ -102,18 +102,39 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
   bool _isEditMode = false;
   bool _isSaving = false;
+
   String _formatDateTime(DateTime dt) {
     return '${dt.day.toString().padLeft(2, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
   }
 
-  Future<void> _generateCustomerCode() async {
+  Future<void> _generateCustomerCode(String fyear) async {
+    if (_isEditMode) {
+      return;
+    }
+
     try {
-      final code = await ChallanService.generateCustomerCode();
-      if (mounted) {
-        _custCodeController.text = code;
-      }
+      final code = await ChallanService.generateCustomerCodeForFinancialYear(fyear);
+      if (!mounted) return;
+      _custCodeController.text = code;
+      setState(() {});
     } catch (e) {
       debugPrint('Error generating customer code: $e');
+    }
+  }
+
+  /// Acquire a unique customer code inside a transaction right before saving.
+  /// This ensures no two concurrent saves receive the same code.
+  Future<void> _acquireCustomerCodeForSave(String fyear) async {
+    if (_isEditMode) return;
+
+    try {
+      final code = await ChallanService.generateCustomerCodeWithTransaction(fyear);
+      if (!mounted) return;
+      _custCodeController.text = code;
+      setState(() {});
+    } catch (e) {
+      debugPrint('Error acquiring transactional customer code: $e');
+      rethrow;
     }
   }
 
@@ -121,17 +142,21 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   void initState() {
     super.initState();
     // Set Date and FYear automatically
+    final initialFyear = ChallanService.getCurrentFinancialYear();
     _dateController.text = _formatDateTime(DateTime.now());
-    _fyearController.text = ChallanService.getCurrentFinancialYear();
+    _fyearController.text = initialFyear;
 
     if (widget.custCode != null) {
-      // Edit mode - load existing data
+      // Edit mode - load existing data without generating a new code
       _custCodeController.text = widget.custCode ?? '';
       _isEditMode = true;
       _loadExistingData();
     } else {
-      // New entry mode - generate new customer code
-      _generateCustomerCode();
+      // New entry mode - leave the field blank while the next customer code is generated.
+      _custCodeController.text = '';
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _generateCustomerCode(initialFyear);
+      });
     }
   }
 
@@ -656,6 +681,18 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     setState(() => _isSaving = true);
 
     try {
+      if (!_isEditMode) {
+        final fyear = _fyearController.text.trim().isEmpty
+            ? ChallanService.getCurrentFinancialYear()
+            : _fyearController.text.trim();
+        await _acquireCustomerCodeForSave(fyear);
+      }
+
+      final customerCode = _custCodeController.text.trim();
+      if (customerCode.isEmpty) {
+        throw Exception('Customer code could not be generated');
+      }
+
       // Update kilometer details
       final startKM = int.tryParse(_startKMController.text) ?? 0;
       final endKM = int.tryParse(_endKMController.text) ?? 0;
@@ -666,7 +703,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       // Build the data map
       final data = {
         'fyear': _fyearController.text,
-        'custCode': _custCodeController.text,
+        'custCode': customerCode,
         'partyName': _partyNameController.text.trim(),
         'sDate': _dateController.text,
         'address': _addressController.text.trim(),

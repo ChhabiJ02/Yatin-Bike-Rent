@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/customer_documents.dart';
 import '../models/transportation_model.dart';
 import '../screens/transportation_details_screen.dart';
+import '../services/challan_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/form_image_picker.dart';
 
@@ -190,13 +191,6 @@ class ChallanForm {
   }
 }
 
-class _CustomerCodeResult {
-  final String prefix;
-  final int maxId;
-
-  _CustomerCodeResult(this.prefix, this.maxId);
-}
-
 // ignore: must_be_immutable
 class _ChallanFormWidget extends StatefulWidget {
   String? custCode;
@@ -332,8 +326,10 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
       final fyear = _currentFinancialYear();
       fyearController.text = fyear;
       dateController.text = _formatChallanDateTime(DateTime.now());
-      customerCodeController.text = '';
-      _loadNextCustomerCode(fyear);
+      customerCodeController.text = ChallanService.buildCustomerCode(fyear, 1);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _generateCustomerCode(fyear);
+      });
     }
   }
 
@@ -370,192 +366,18 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
     return '$currentYear-${currentYear + 1}';
   }
 
-  int? _extractNumericSuffix(String code) {
-    // Handle codes like 26260001 or older 2627006 forms.
-    final exactMatch = RegExp(r'^\d{4}0+(\d+)$').firstMatch(code);
-    if (exactMatch != null) {
-      return int.tryParse(exactMatch.group(1)!);
+  Future<void> _generateCustomerCode(String fyear) async {
+    if (_isEditMode) {
+      return;
     }
-    if (code.length > 6) {
-      return int.tryParse(code.substring(6));
-    }
-    return null;
-  }
 
-  String _formatCustomerCode(String fyear, int id) {
-    // Expecting fyear like '2026-2027'. Produce short form: '26270008'
-    // Format: YYYYIIII where YY = last two digits of start year, YY = last two digits of end year,
-    // IIII = 4-digit zero-padded incremental ID (ensures 8-digit format).
     try {
-      final parts = fyear
-          .split(RegExp(r'[^0-9]+'))
-          .where((s) => s.isNotEmpty)
-          .toList();
-      int start = DateTime.now().year;
-      int end = start + 1;
-      if (parts.length >= 2) {
-        start = int.tryParse(parts[0]) ?? start;
-        end = int.tryParse(parts[1]) ?? (start + 1);
-      }
-      final s2 = (start % 100).toString().padLeft(2, '0');
-      final e2 = (end % 100).toString().padLeft(2, '0');
-      final idStr = id.toString().padLeft(4, '0');
-      return '$s2$e2$idStr';
-    } catch (_) {
-      return id.toString().padLeft(4, '0');
-    }
-  }
-
-  String _formatCustomerCodeWithPrefix(String prefix, int id) {
-    return '$prefix${id.toString().padLeft(4, '0')}';
-  }
-
-  Future<_CustomerCodeResult> _findMaxCustomerIdForFyear(String fyear) async {
-    final currentPrefix = _codePrefix(fyear);
-    int maxId = 0;
-
-    // 1) Scan customers for the same financial year and check both custCode field and doc.id
-    final customersForYear = await ChallanForm._customersCollection
-        .where('fyear', isEqualTo: fyear)
-        .get();
-    for (final doc in customersForYear.docs) {
-      final data = doc.data();
-      final codeField = data['custCode'] as String?;
-      if (codeField != null && codeField.startsWith(currentPrefix)) {
-        final s = _extractNumericSuffix(codeField);
-        if (s != null && s > maxId) maxId = s;
-      }
-      final idCode = doc.id;
-      if (idCode.startsWith(currentPrefix)) {
-        final s = _extractNumericSuffix(idCode);
-        if (s != null && s > maxId) maxId = s;
-      }
-    }
-
-    // 2) Scan all customers (in case some codes were saved under different years)
-    final allCustomers = await ChallanForm._customersCollection.get();
-    for (final doc in allCustomers.docs) {
-      final data = doc.data();
-      final codeField = data['custCode'] as String?;
-      if (codeField != null && codeField.startsWith(currentPrefix)) {
-        final s = _extractNumericSuffix(codeField);
-        if (s != null && s > maxId) maxId = s;
-      }
-      final idCode = doc.id;
-      if (idCode.startsWith(currentPrefix)) {
-        final s = _extractNumericSuffix(idCode);
-        if (s != null && s > maxId) maxId = s;
-      }
-    }
-
-    // 3) Scan challans for the same financial year and check both custCode field and document id
-    final challansForYear = await FirebaseFirestore.instance
-        .collection('challans')
-        .where('fyear', isEqualTo: fyear)
-        .get();
-    for (final doc in challansForYear.docs) {
-      final data = doc.data();
-      final codeField = data['custCode'] as String?;
-      if (codeField != null && codeField.startsWith(currentPrefix)) {
-        final s = _extractNumericSuffix(codeField);
-        if (s != null && s > maxId) maxId = s;
-      }
-      final idCode = doc.id;
-      if (idCode.startsWith(currentPrefix)) {
-        final s = _extractNumericSuffix(idCode);
-        if (s != null && s > maxId) maxId = s;
-      }
-    }
-
-    // 4) Scan all challans (in case some codes were saved under different years)
-    final allChallans = await FirebaseFirestore.instance
-        .collection('challans')
-        .get();
-    for (final doc in allChallans.docs) {
-      final data = doc.data();
-      final codeField = data['custCode'] as String?;
-      if (codeField != null && codeField.startsWith(currentPrefix)) {
-        final s = _extractNumericSuffix(codeField);
-        if (s != null && s > maxId) maxId = s;
-      }
-      final idCode = doc.id;
-      if (idCode.startsWith(currentPrefix)) {
-        final s = _extractNumericSuffix(idCode);
-        if (s != null && s > maxId) maxId = s;
-      }
-    }
-
-    debugPrint(
-      'findMaxCustomerIdForFyear($fyear) -> prefix=$currentPrefix maxId=$maxId',
-    );
-    if (maxId > 0) {
-      return _CustomerCodeResult(currentPrefix, maxId);
-    }
-
-    int fallbackMaxId = 0;
-    String fallbackPrefix = currentPrefix;
-
-    final allCustomersFromCustomers = await FirebaseFirestore.instance
-        .collection('customers')
-        .get();
-    for (final doc in allCustomersFromCustomers.docs) {
-      final code = (doc.data()['custCode'] as String?) ?? doc.id;
-      final s = _extractNumericSuffix(code);
-      if (s != null && s > fallbackMaxId) {
-        fallbackMaxId = s;
-        fallbackPrefix = code.length >= 4 ? code.substring(0, 4) : code;
-      }
-    }
-
-    final fallbackChallans = await FirebaseFirestore.instance
-        .collection('challans')
-        .get();
-    for (final doc in fallbackChallans.docs) {
-      final code = (doc.data()['custCode'] as String?) ?? doc.id;
-      final s = _extractNumericSuffix(code);
-      if (s != null && s > fallbackMaxId) {
-        fallbackMaxId = s;
-        fallbackPrefix = code.length >= 4 ? code.substring(0, 4) : code;
-      }
-    }
-
-    debugPrint('Fallback prefix=$fallbackPrefix fallbackMaxId=$fallbackMaxId');
-    return _CustomerCodeResult(fallbackPrefix, fallbackMaxId);
-  }
-
-  String _codePrefix(String fyear) {
-    final parts = fyear
-        .split(RegExp(r'[^0-9]+'))
-        .where((s) => s.isNotEmpty)
-        .toList();
-    int start = DateTime.now().year;
-    int end = start + 1;
-    if (parts.length >= 2) {
-      start = int.tryParse(parts[0]) ?? start;
-      end = int.tryParse(parts[1]) ?? (start + 1);
-    }
-    final s2 = (start % 100).toString().padLeft(2, '0');
-    final e2 = (end % 100).toString().padLeft(2, '0');
-    return '$s2$e2';
-  }
-
-  Future<void> _loadNextCustomerCode(String fyear) async {
-    try {
-      final prefixResult = await _findMaxCustomerIdForFyear(fyear);
-      final nextId = prefixResult.maxId + 1;
-      final nextCode = _formatCustomerCodeWithPrefix(
-        prefixResult.prefix,
-        nextId,
-      );
-      debugPrint(
-        'Next customer code for $fyear: prefix=${prefixResult.prefix} maxId=${prefixResult.maxId} nextCode=$nextCode',
-      );
+      final nextCode = await ChallanService.generateCustomerCodeForFinancialYear(fyear);
       if (!mounted) return;
       customerCodeController.text = nextCode;
+      setState(() {});
     } catch (error) {
       debugPrint('Failed to load next customer code: $error');
-      if (!mounted) return;
-      customerCodeController.text = _formatCustomerCode(fyear, 1);
     }
   }
 

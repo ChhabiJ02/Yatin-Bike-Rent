@@ -1,13 +1,14 @@
-import 'dart:io';
+import 'dart:io' as io;
+import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:path_provider/path_provider.dart';
 import '../models/invoice.dart';
 import '../models/challan_data.dart';
 
 class InvoiceService {
-  static Future<String> generateInvoicePdf({
+  static Future<Uint8List> generateInvoicePdfBytes({
     required Invoice invoice,
     String? companyName,
     String? companyAddress,
@@ -370,9 +371,20 @@ class InvoiceService {
       ),
     );
 
+    return await pdf.save();
+  }
+
+  static Future<String?> saveInvoicePdfToFile(
+    Uint8List pdfBytes, {
+    required String invoiceNumber,
+  }) async {
+    if (kIsWeb) {
+      return null;
+    }
+
     final output = await getTemporaryDirectory();
-    final file = File('${output.path}/invoice_${invoice.invoiceNumber}.pdf');
-    await file.writeAsBytes(await pdf.save());
+    final file = io.File('${output.path}/invoice_$invoiceNumber.pdf');
+    await file.writeAsBytes(pdfBytes);
     return file.path;
   }
 
@@ -401,11 +413,27 @@ class InvoiceService {
   }
 
   static Future<void> printInvoice(Invoice invoice) async {
-    final pdfPath = await generateInvoicePdf(invoice: invoice);
-    await Printing.layoutPdf(onLayout: (format) async {
-      final file = File(pdfPath);
-      return file.readAsBytes();
-    });
+    final pdfBytes = await generateInvoicePdfBytes(invoice: invoice);
+    await Printing.layoutPdf(onLayout: (format) async => pdfBytes);
+  }
+
+  static Future<String> generateInvoicePdf({
+    required Invoice invoice,
+    String? companyName,
+    String? companyAddress,
+    String? gstNumber,
+  }) async {
+    final pdfBytes = await generateInvoicePdfBytes(
+      invoice: invoice,
+      companyName: companyName,
+      companyAddress: companyAddress,
+      gstNumber: gstNumber,
+    );
+    final savedPath = await saveInvoicePdfToFile(
+      pdfBytes,
+      invoiceNumber: invoice.invoiceNumber,
+    );
+    return savedPath ?? '';
   }
 
   static Future<String> generateChallanInvoice({

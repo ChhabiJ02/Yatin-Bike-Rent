@@ -1,5 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/invoice.dart';
@@ -24,6 +26,7 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
   VehicleHandover? _vehicleHandover;
   KilometerDetails? _kilometerDetails;
   PaymentDetails? _payment;
+  Uint8List? _pdfBytes;
   String? _pdfPath;
   bool _isGenerating = false;
   bool _isLoading = true;
@@ -48,7 +51,9 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
         _payment = PaymentDetails.fromMap(Map<String, dynamic>.from(_challanData!['payment']));
       }
     }
-    if (mounted) setState(() => _isLoading = false);
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -169,7 +174,7 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _pdfPath != null ? _previewPdf : null,
+                onPressed: _pdfBytes != null ? _previewPdf : null,
                 icon: const Icon(Icons.visibility),
                 label: const Text('Preview'),
                 style: OutlinedButton.styleFrom(
@@ -182,7 +187,7 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
             const SizedBox(width: 8),
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _pdfPath != null ? _downloadPdf : null,
+                onPressed: _pdfBytes != null ? _downloadPdf : null,
                 icon: const Icon(Icons.download),
                 label: const Text('Download'),
                 style: OutlinedButton.styleFrom(
@@ -196,7 +201,7 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
-          onPressed: _pdfPath != null ? _sharePdf : null,
+          onPressed: _pdfBytes != null ? _sharePdf : null,
           icon: const Icon(Icons.share),
           label: const Text('Share PDF'),
           style: OutlinedButton.styleFrom(
@@ -207,7 +212,7 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
-          onPressed: _pdfPath != null ? _shareOnWhatsApp : null,
+          onPressed: _pdfBytes != null ? _shareOnWhatsApp : null,
           icon: const Icon(Icons.chat),
           label: const Text('Send via WhatsApp'),
           style: OutlinedButton.styleFrom(
@@ -221,15 +226,26 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
   }
 
   Future<void> _previewPdf() async {
-    if (_pdfPath == null) return;
-    // Use printing package to preview
+    if (_pdfBytes == null) return;
+    await Printing.layoutPdf(onLayout: (format) async => _pdfBytes!);
   }
 
   Future<void> _downloadPdf() async {
-    if (_pdfPath == null) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('PDF saved at: $_pdfPath')),
-    );
+    if (_pdfBytes == null) return;
+
+    if (kIsWeb) {
+      await Printing.sharePdf(bytes: _pdfBytes!, filename: 'invoice_${widget.custCode}.pdf');
+    } else {
+      _pdfPath = await InvoiceService.saveInvoicePdfToFile(
+        _pdfBytes!,
+        invoiceNumber: widget.custCode,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_pdfPath != null ? 'PDF saved at: $_pdfPath' : 'PDF saved')),
+        );
+      }
+    }
   }
 
   Future<void> _generateInvoice() async {
@@ -254,7 +270,13 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
         paymentStatus: _payment != null && _payment!.paymentAmount.isNotEmpty ? 'Paid' : 'Pending',
       );
 
-      _pdfPath = await InvoiceService.generateInvoicePdf(invoice: invoice);
+      _pdfBytes = await InvoiceService.generateInvoicePdfBytes(invoice: invoice);
+      if (!kIsWeb) {
+        _pdfPath = await InvoiceService.saveInvoicePdfToFile(
+          _pdfBytes!,
+          invoiceNumber: widget.custCode,
+        );
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Invoice PDF generated')),
@@ -271,8 +293,21 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
   }
 
   Future<void> _sharePdf() async {
-    if (_pdfPath == null) return;
-    await Share.shareXFiles([XFile(_pdfPath!)], text: 'Invoice ${widget.custCode}');
+    if (_pdfBytes == null) return;
+
+    if (kIsWeb) {
+      await Printing.sharePdf(bytes: _pdfBytes!, filename: 'invoice_${widget.custCode}.pdf');
+      return;
+    }
+
+    _pdfPath ??= await InvoiceService.saveInvoicePdfToFile(
+      _pdfBytes!,
+      invoiceNumber: widget.custCode,
+    );
+
+    if (_pdfPath != null) {
+      await Share.shareXFiles([XFile(_pdfPath!)], text: 'Invoice ${widget.custCode}');
+    }
   }
 
   Future<void> _shareOnWhatsApp() async {
