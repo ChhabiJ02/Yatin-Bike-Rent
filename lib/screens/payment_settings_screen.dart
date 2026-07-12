@@ -42,10 +42,28 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
 
           if (snapshot.hasError) {
             debugPrint("PaymentSettings Error: ${snapshot.error}");
-            return const Center(
-              child: Text(
-                'Failed to load payment methods.',
-                style: TextStyle(color: Colors.red),
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.qr_code, size: 64, color: AppColors.muted),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'No Payment Methods Added',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Try again later.',
+                    style: TextStyle(color: AppColors.muted),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: _showAddQRDialog,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add QR Code'),
+                  ),
+                ],
               ),
             );
           }
@@ -61,7 +79,7 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
                   const Icon(Icons.qr_code, size: 64, color: AppColors.muted),
                   const SizedBox(height: 16),
                   const Text(
-                    'No QR Codes Added',
+                    'No Payment Methods Added',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),

@@ -89,7 +89,8 @@ class _StaffDashboardState extends State<StaffDashboard> {
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
             children: [
               Container(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 24),
+
                 decoration: BoxDecoration(
                   gradient: AppColors.heroGradient,
                   borderRadius: BorderRadius.circular(28),
@@ -234,7 +235,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
                   );
                 },
               ),
-              const SizedBox(height: 100), // Padding for the FAB
+              const SizedBox(height: 160), // Padding for the FAB (prevents overlap with Recent Bookings)
             ],
           ),
         ),
@@ -457,11 +458,15 @@ class _CustomerEntryCard extends StatelessWidget {
                         fontWeight: FontWeight.w900,
                         color: AppColors.ink,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'Code: ${customer.custCode}',
                       style: const TextStyle(color: AppColors.muted),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
@@ -537,59 +542,67 @@ class _CustomerEntryCard extends StatelessWidget {
                   spacing: 8.0,
                   runSpacing: 4.0,
                   children: [
-                    TextButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                ChallanEntryScreen(custCode: customer.custCode),
-                          ),
-                        );
-                      },
-                      child: const Text('Edit'),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => InvoicePreviewScreen(
-                              custCode: customer.custCode,
-                            ),
-                          ),
-                        );
-                      },
-                      child: const Text('Invoice'),
-                    ),
-                    if (customer.vehicleHandover?['returnStatus'] !=
-                        'Returned') ...[
-                      TextButton(
-                        onPressed: () {
-                          if (onStatusChange != null) {
-                            onStatusChange!(customer.custCode, 'Returned');
-                          }
-                        },
-                        child: const Text('Mark Returned'),
-                      ),
-                    ],
-                    if (customer.vehicleHandover?['returnStatus'] == 'Returned')
-                      ElevatedButton.icon(
+                    Flexible(
+                      child: TextButton(
                         onPressed: () {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => PaymentRecordScreen(
+                              builder: (_) =>
+                                  ChallanEntryScreen(custCode: customer.custCode),
+                            ),
+                          );
+                        },
+                        child: const Text('Edit'),
+                      ),
+                    ),
+                    Flexible(
+                      child: TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => InvoicePreviewScreen(
                                 custCode: customer.custCode,
                               ),
                             ),
                           );
                         },
-                        icon: const Icon(Icons.currency_rupee, size: 18),
-                        label: const Text('Payment'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.mint,
-                          foregroundColor: Colors.white,
+                        child: const Text('Invoice'),
+                      ),
+                    ),
+                    if (customer.vehicleHandover?['returnStatus'] !=
+                        'Returned') ...[
+                      Flexible(
+                        child: TextButton(
+                          onPressed: () {
+                            if (onStatusChange != null) {
+                              onStatusChange!(customer.custCode, 'Returned');
+                            }
+                          },
+                          child: const Text('Mark Returned'),
+                        ),
+                      ),
+                    ],
+                    if (customer.vehicleHandover?['returnStatus'] == 'Returned')
+                      Flexible(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => PaymentRecordScreen(
+                                  custCode: customer.custCode,
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.currency_rupee, size: 18),
+                          label: const Text('Payment'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.mint,
+                            foregroundColor: Colors.white,
+                          ),
                         ),
                       ),
                   ],
