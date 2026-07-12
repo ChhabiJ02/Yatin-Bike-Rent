@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/customer_documents.dart';
+import '../models/customer.dart';
 import '../models/vehicle_handover.dart';
 import '../models/travel_details.dart';
 import '../models/kilometer_details.dart';
@@ -8,6 +8,7 @@ import '../models/transportation_model.dart';
 import '../theme/app_theme.dart';
 import '../widgets/form_image_picker.dart';
 import '../services/challan_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'transportation_details_screen.dart';
 
 class ChallanEntryScreen extends StatefulWidget {
@@ -22,7 +23,9 @@ class ChallanEntryScreen extends StatefulWidget {
 
 class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _customersCollection = FirebaseFirestore.instance.collection('customers');
+  final _customersCollection = FirebaseFirestore.instance.collection(
+    'customers',
+  );
 
   // Controllers
   final _custCodeController = TextEditingController();
@@ -104,6 +107,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   bool _isSaving = false;
   String _formatDateTime(DateTime dt) {
     return '${dt.day.toString().padLeft(2, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
+    // Note: This format is not ideal for sorting. Consider ISO 8601 format 'yyyy-MM-dd HH:mm:ss'.
   }
 
   Future<void> _generateCustomerCode() async {
@@ -140,56 +144,82 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     final doc = await _customersCollection.doc(widget.custCode).get();
     if (doc.exists && mounted) {
       final data = doc.data()!;
-      _partyNameController.text = data['partyName'] ?? '';
-      _addressController.text = data['address'] ?? '';
-      _phoneController.text = data['smsPhone'] ?? '';
-      _aadharController.text = data['aadharNo'] ?? '';
-      _licenseController.text = data['licenceNo'] ?? '';
-      _vehicleController.text = data['vehicleName'] ?? '';
-      _daysController.text = data['days'] ?? '';
-      _rateController.text = data['rate'] ?? '';
-      _billAmountController.text = data['billAmount'] ?? '';
-      // Load existing date and financial year (don't regenerate for editing)
+      final customer = Customer.fromFirestore(
+        doc as DocumentSnapshot<Map<String, dynamic>>,
+      );
+
+      _partyNameController.text = customer.name;
+      _addressController.text = customer.address;
+      _phoneController.text = customer.smsPhone;
+      _aadharController.text = customer.aadharNo;
+      _licenseController.text = customer.licenceNo;
+      _vehicleController.text = customer.vehicleName;
+      _daysController.text = customer.days;
+      _rateController.text = customer.rate;
+      _billAmountController.text = customer.billAmount;
+
       _dateController.text = data['sDate'] ?? _dateController.text;
       _fyearController.text = data['fyear'] ?? _fyearController.text;
 
       if (data['customerDocuments'] != null) {
-        _customerDocuments = CustomerDocuments.fromMap(Map<String, dynamic>.from(data['customerDocuments']));
+        _customerDocuments = CustomerDocuments.fromMap(
+          Map<String, dynamic>.from(data['customerDocuments']),
+        );
       }
       if (data['vehicleHandover'] != null) {
-        _vehicleHandover = VehicleHandover.fromMap(Map<String, dynamic>.from(data['vehicleHandover']));
+        _vehicleHandover = VehicleHandover.fromMap(
+          Map<String, dynamic>.from(data['vehicleHandover']),
+        );
         _vehicleNumberController.text = _vehicleHandover!.vehicleNumber;
-        _pickupLocationController.text = _vehicleHandover!.vehiclePickupLocation;
-        _returnLocationController.text = _vehicleHandover!.vehicleReturnLocation;
+        _pickupLocationController.text =
+            _vehicleHandover!.vehiclePickupLocation;
+        _returnLocationController.text =
+            _vehicleHandover!.vehicleReturnLocation;
         _vehicleCameFromController.text = _vehicleHandover!.vehicleCameFrom;
         _vehicleReturnedToController.text = _vehicleHandover!.vehicleReturnedTo;
         if (_vehicleHandover!.vehicleGivenDate.isNotEmpty) {
           final parts = _vehicleHandover!.vehicleGivenDate.split('-');
           if (parts.length == 3) {
-            _vehicleGivenDate = DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+            _vehicleGivenDate = DateTime(
+              int.parse(parts[2]),
+              int.parse(parts[1]),
+              int.parse(parts[0]),
+            );
           }
         }
         if (_vehicleHandover!.vehicleGivenTime.isNotEmpty) {
           final parts = _vehicleHandover!.vehicleGivenTime.split(':');
           if (parts.length == 2) {
-            _vehicleGivenTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+            _vehicleGivenTime = TimeOfDay(
+              hour: int.parse(parts[0]),
+              minute: int.parse(parts[1]),
+            );
           }
         }
         if (_vehicleHandover!.vehicleReturnDate.isNotEmpty) {
           final parts = _vehicleHandover!.vehicleReturnDate.split('-');
           if (parts.length == 3) {
-            _vehicleReturnDate = DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+            _vehicleReturnDate = DateTime(
+              int.parse(parts[2]),
+              int.parse(parts[1]),
+              int.parse(parts[0]),
+            );
           }
         }
         if (_vehicleHandover!.vehicleReturnTime.isNotEmpty) {
           final parts = _vehicleHandover!.vehicleReturnTime.split(':');
           if (parts.length == 2) {
-            _vehicleReturnTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+            _vehicleReturnTime = TimeOfDay(
+              hour: int.parse(parts[0]),
+              minute: int.parse(parts[1]),
+            );
           }
         }
       }
       if (data['travelDetails'] != null) {
-        _travelDetails = TravelDetails.fromMap(Map<String, dynamic>.from(data['travelDetails']));
+        _travelDetails = TravelDetails.fromMap(
+          Map<String, dynamic>.from(data['travelDetails']),
+        );
         _customerCameFromController.text = _travelDetails!.customerCameFrom;
         _stayingAtController.text = _travelDetails!.stayingAt;
         _hotelNameController.text = _travelDetails!.hotelName;
@@ -200,12 +230,16 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         _pinCodeController.text = _travelDetails!.pinCode;
       }
       if (data['kilometerDetails'] != null) {
-        _kilometerDetails = KilometerDetails.fromMap(Map<String, dynamic>.from(data['kilometerDetails']));
+        _kilometerDetails = KilometerDetails.fromMap(
+          Map<String, dynamic>.from(data['kilometerDetails']),
+        );
         _startKMController.text = _kilometerDetails!.startKM.toString();
         _endKMController.text = _kilometerDetails!.endKM.toString();
       }
       if (data['transportation'] != null) {
-        _transportation = Transportation.fromMap(Map<String, dynamic>.from(data['transportation']));
+        _transportation = Transportation.fromMap(
+          Map<String, dynamic>.from(data['transportation']),
+        );
       }
       setState(() {});
     }
@@ -265,8 +299,17 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               _buildReadOnlyField('Financial Year', _fyearController),
               const SizedBox(height: 24),
               _buildSectionHeader('Customer Details'),
-              _buildTextField('Party Name', _partyNameController, required: true),
-              _buildTextField('Phone', _phoneController, keyboardType: TextInputType.phone, required: true),
+              _buildTextField(
+                'Party Name',
+                _partyNameController,
+                required: true,
+              ),
+              _buildTextField(
+                'Phone',
+                _phoneController,
+                keyboardType: TextInputType.phone,
+                required: true,
+              ),
               _buildTextField('Address', _addressController, maxLines: 2),
               _buildTextField('Aadhar No.', _aadharController),
               _buildTextField('License No.', _licenseController),
@@ -322,7 +365,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
               const SizedBox(height: 32),
               ElevatedButton(
-                onPressed: _isSaving ? null : _saveChallan,
+                onPressed: _isSaving ? null : _saveCustomer,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.ember,
                   foregroundColor: Colors.white,
@@ -353,7 +396,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     );
   }
 
-  Widget _buildTextField(String label, TextEditingController controller, {
+  Widget _buildTextField(
+    String label,
+    TextEditingController controller, {
     int maxLines = 1,
     TextInputType? keyboardType,
     bool required = false,
@@ -368,7 +413,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           labelText: label,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
-        validator: required ? (v) => v == null || v.isEmpty ? '$label required' : null : null,
+        validator: required
+            ? (v) => v == null || v.isEmpty ? '$label required' : null
+            : null,
       ),
     );
   }
@@ -480,30 +527,60 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       children: [
         _buildTextField('Vehicle Name', _vehicleController),
         _buildTextField('Vehicle Number', _vehicleNumberController),
-        _buildDropdownField('Pickup Location', _pickupLocationController, _pickupLocations),
-        _buildDropdownField('Return Location', _returnLocationController, _pickupLocations),
+        _buildDropdownField(
+          'Pickup Location',
+          _pickupLocationController,
+          _pickupLocations,
+        ),
+        _buildDropdownField(
+          'Return Location',
+          _returnLocationController,
+          _pickupLocations,
+        ),
         const SizedBox(height: 12),
-        _buildDateTimePicker('Vehicle Given Date', _vehicleGivenDate, _vehicleGivenTime, (date, time) {
-          setState(() {
-            _vehicleGivenDate = date;
-            _vehicleGivenTime = time;
-          });
-        }),
+        _buildDateTimePicker(
+          'Vehicle Given Date',
+          _vehicleGivenDate,
+          _vehicleGivenTime,
+          (date, time) {
+            setState(() {
+              _vehicleGivenDate = date;
+              _vehicleGivenTime = time;
+            });
+          },
+        ),
         const SizedBox(height: 12),
-        _buildDateTimePicker('Vehicle Return Date', _vehicleReturnDate, _vehicleReturnTime, (date, time) {
-          setState(() {
-            _vehicleReturnDate = date;
-            _vehicleReturnTime = time;
-          });
-        }),
+        _buildDateTimePicker(
+          'Vehicle Return Date',
+          _vehicleReturnDate,
+          _vehicleReturnTime,
+          (date, time) {
+            setState(() {
+              _vehicleReturnDate = date;
+              _vehicleReturnTime = time;
+            });
+          },
+        ),
         const SizedBox(height: 12),
-        _buildDropdownField('Vehicle Came From', _vehicleCameFromController, _pickupLocations),
-        _buildDropdownField('Vehicle Returned To', _vehicleReturnedToController, _pickupLocations),
+        _buildDropdownField(
+          'Vehicle Came From',
+          _vehicleCameFromController,
+          _pickupLocations,
+        ),
+        _buildDropdownField(
+          'Vehicle Returned To',
+          _vehicleReturnedToController,
+          _pickupLocations,
+        ),
       ],
     );
   }
 
-  Widget _buildDropdownField(String label, TextEditingController controller, List<String> options) {
+  Widget _buildDropdownField(
+    String label,
+    TextEditingController controller,
+    List<String> options,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<String>(
@@ -512,7 +589,11 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           labelText: label,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
-        items: options.map((option) => DropdownMenuItem(value: option, child: Text(option))).toList(),
+        items: options
+            .map(
+              (option) => DropdownMenuItem(value: option, child: Text(option)),
+            )
+            .toList(),
         onChanged: (value) {
           if (value != null) {
             controller.text = value;
@@ -567,8 +648,16 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   Widget _buildTravelSection() {
     return Column(
       children: [
-        _buildDropdownField('Customer Came From', _customerCameFromController, _cameFromOptions),
-        _buildDropdownField('Staying At', _stayingAtController, _stayingAtOptions),
+        _buildDropdownField(
+          'Customer Came From',
+          _customerCameFromController,
+          _cameFromOptions,
+        ),
+        _buildDropdownField(
+          'Staying At',
+          _stayingAtController,
+          _stayingAtOptions,
+        ),
         _buildTextField('Hotel/Place Name', _hotelNameController),
         _buildTextField('Stay Address', _stayAddressController, maxLines: 2),
         _buildTextField('Landmark', _landmarkController),
@@ -579,7 +668,11 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
             Expanded(child: _buildTextField('State', _stateController)),
           ],
         ),
-        _buildTextField('PIN Code', _pinCodeController, keyboardType: TextInputType.number),
+        _buildTextField(
+          'PIN Code',
+          _pinCodeController,
+          keyboardType: TextInputType.number,
+        ),
       ],
     );
   }
@@ -590,11 +683,19 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         Row(
           children: [
             Expanded(
-              child: _buildTextField('Start KM', _startKMController, keyboardType: TextInputType.number),
+              child: _buildTextField(
+                'Start KM',
+                _startKMController,
+                keyboardType: TextInputType.number,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _buildTextField('End KM', _endKMController, keyboardType: TextInputType.number),
+              child: _buildTextField(
+                'End KM',
+                _endKMController,
+                keyboardType: TextInputType.number,
+              ),
             ),
           ],
         ),
@@ -610,7 +711,11 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               const Text('Total Distance: ', style: TextStyle(fontSize: 16)),
               Text(
                 _calculateTotalKM(),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.ember),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.ember,
+                ),
               ),
               const Text(' KM', style: TextStyle(fontSize: 16)),
             ],
@@ -644,7 +749,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     );
   }
 
-  Future<void> _saveChallan() async {
+  Future<void> _saveCustomer() async {
     if (!_formKey.currentState!.validate()) return;
     if (_vehicleNumberController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -652,99 +757,70 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       );
       return;
     }
-
     setState(() => _isSaving = true);
 
     try {
-      // Update kilometer details
-      final startKM = int.tryParse(_startKMController.text) ?? 0;
-      final endKM = int.tryParse(_endKMController.text) ?? 0;
-      if (startKM > 0 || endKM > 0) {
-        _kilometerDetails = KilometerDetails(startKM: startKM, endKM: endKM);
-      }
-
-      // Build the data map
-      final data = {
-        'fyear': _fyearController.text,
-        'custCode': _custCodeController.text,
-        'partyName': _partyNameController.text.trim(),
-        'sDate': _dateController.text,
-        'address': _addressController.text.trim(),
-        'smsPhone': _phoneController.text.trim(),
-        'aadharNo': _aadharController.text.trim(),
-        'licenceNo': _licenseController.text.trim(),
-        'vehicleName': _vehicleController.text.trim(),
-        'vehicleNumber': _vehicleNumberController.text.trim(),
-        'days': _daysController.text.trim(),
-        'rate': _rateController.text.trim(),
-        'billAmount': _billAmountController.text.trim(),
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-
-      // Add customer documents if available
-      if (_customerDocuments != null && !_customerDocuments!.isEmpty) {
-        data['customerDocuments'] = _customerDocuments!.toMap();
-      }
-
-      // Add vehicle handover
-      String? givenDateStr;
-      String? givenTimeStr;
-      String? returnDateStr;
       String? returnTimeStr;
 
-      if (_vehicleGivenDate != null) {
-        givenDateStr = '${_vehicleGivenDate!.day}-${_vehicleGivenDate!.month}-${_vehicleGivenDate!.year}';
-      }
-      if (_vehicleGivenTime != null) {
-        givenTimeStr = '${_vehicleGivenTime!.hour}:${_vehicleGivenTime!.minute}';
-      }
-      if (_vehicleReturnDate != null) {
-        returnDateStr = '${_vehicleReturnDate!.day}-${_vehicleReturnDate!.month}-${_vehicleReturnDate!.year}';
-      }
-      if (_vehicleReturnTime != null) {
-        returnTimeStr = '${_vehicleReturnTime!.hour}:${_vehicleReturnTime!.minute}';
-      }
-
-      _vehicleHandover = VehicleHandover(
+      final customer = Customer(
+        custCode: _custCodeController.text,
+        name: _partyNameController.text.trim(),
         vehicleName: _vehicleController.text.trim(),
-        vehicleNumber: _vehicleNumberController.text.trim(),
-        vehiclePickupLocation: _pickupLocationController.text.trim(),
-        vehicleReturnLocation: _returnLocationController.text.trim(),
-        vehicleGivenDate: givenDateStr ?? '',
-        vehicleGivenTime: givenTimeStr ?? '',
-        vehicleReturnDate: returnDateStr ?? '',
-        vehicleReturnTime: returnTimeStr ?? '',
-        vehicleCameFrom: _vehicleCameFromController.text.trim(),
-        vehicleReturnedTo: _vehicleReturnedToController.text.trim(),
-        returnStatus: _vehicleHandover?.returnStatus ?? 'Pending',
+        sDate: _dateController.text,
+        returnDate: _vehicleReturnDate != null
+            ? '${_vehicleReturnDate!.day}-${_vehicleReturnDate!.month}-${_vehicleReturnDate!.year}'
+            : '',
+        days: _daysController.text.trim(),
+        rate: _rateController.text.trim(),
+        billAmount: _billAmountController.text.trim(),
+        address: _addressController.text.trim(),
+        smsPhone: _phoneController.text.trim(),
+        aadharNo: _aadharController.text.trim(),
+        licenceNo: _licenseController.text.trim(),
+        fyear: _fyearController.text,
+        vehicleHandover: VehicleHandover(
+          vehicleName: _vehicleController.text.trim(),
+          vehicleNumber: _vehicleNumberController.text.trim(),
+          vehiclePickupLocation: _pickupLocationController.text.trim(),
+          vehicleReturnLocation: _returnLocationController.text.trim(),
+          vehicleGivenDate: _vehicleGivenDate != null
+              ? '${_vehicleGivenDate!.day}-${_vehicleGivenDate!.month}-${_vehicleGivenDate!.year}'
+              : '',
+          vehicleGivenTime: _vehicleGivenTime != null
+              ? '${_vehicleGivenTime!.hour}:${_vehicleGivenTime!.minute}'
+              : '',
+          vehicleReturnDate: _vehicleReturnDate != null
+              ? '${_vehicleReturnDate!.day}-${_vehicleReturnDate!.month}-${_vehicleReturnDate!.year}'
+              : '',
+          vehicleReturnTime: _vehicleReturnTime != null
+              ? '${_vehicleReturnTime!.hour}:${_vehicleReturnTime!.minute}'
+              : '',
+          vehicleCameFrom: _vehicleCameFromController.text.trim(),
+          vehicleReturnedTo: _vehicleReturnedToController.text.trim(),
+          returnStatus: _vehicleHandover?.returnStatus ?? 'Pending',
+        ).toMap(),
+        travelDetails: TravelDetails(
+          customerCameFrom: _customerCameFromController.text.trim(),
+          stayingAt: _stayingAtController.text.trim(),
+          hotelName: _hotelNameController.text.trim(),
+          stayAddress: _stayAddressController.text.trim(),
+          landmark: _landmarkController.text.trim(),
+          city: _cityController.text.trim(),
+          state: _stateController.text.trim(),
+          pinCode: _pinCodeController.text.trim(),
+        ).toMap(),
+        kilometerDetails: KilometerDetails(
+          startKM: int.tryParse(_startKMController.text) ?? 0,
+          endKM: int.tryParse(_endKMController.text) ?? 0,
+        ).toMap(),
+        customerDocuments: _customerDocuments?.toMap(),
+        transportation: _transportation?.toMap(),
       );
-      data['vehicleHandover'] = _vehicleHandover!.toMap();
-
-      // Add travel details
-      _travelDetails = TravelDetails(
-        customerCameFrom: _customerCameFromController.text.trim(),
-        stayingAt: _stayingAtController.text.trim(),
-        hotelName: _hotelNameController.text.trim(),
-        stayAddress: _stayAddressController.text.trim(),
-        landmark: _landmarkController.text.trim(),
-        city: _cityController.text.trim(),
-        state: _stateController.text.trim(),
-        pinCode: _pinCodeController.text.trim(),
-      );
-      data['travelDetails'] = _travelDetails!.toMap();
-
-      // Add kilometer details
-      if (_kilometerDetails != null) {
-        data['kilometerDetails'] = _kilometerDetails!.toMap();
-      }
-
-      // Add transportation details inside the Challan document
-      if (_transportation != null && !_transportation!.isEmpty) {
-        data['transportation'] = _transportation!.toMap();
-      }
 
       // Save to Firestore
-      await _customersCollection.doc(_custCodeController.text).set(data, SetOptions(merge: true));
+      await _customersCollection
+          .doc(_custCodeController.text)
+          .set(customer.toMap(), SetOptions(merge: true));
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -754,9 +830,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
 

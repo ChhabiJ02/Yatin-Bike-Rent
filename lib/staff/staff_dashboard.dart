@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/customer.dart';
 import '../models/booking.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/rental_service.dart';
@@ -18,11 +19,19 @@ class StaffDashboard extends StatefulWidget {
 }
 
 class _StaffDashboardState extends State<StaffDashboard> {
-  final _customersCollection = FirebaseFirestore.instance.collection('customers');
+  final _customersCollection = FirebaseFirestore.instance
+      .collection('customers')
+      .withConverter<Customer>(
+        fromFirestore: (snapshots, _) => Customer.fromFirestore(snapshots),
+        toFirestore: (customer, _) => customer.toMap(),
+      );
   String _returnFilter = 'All';
 
   void _openEntryForm() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const ChallanEntryScreen()));
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ChallanEntryScreen()),
+    );
   }
 
   Future<void> _updateReturnStatus(String custCode, String status) async {
@@ -32,10 +41,16 @@ class _StaffDashboardState extends State<StaffDashboard> {
         title: Text('Mark as $status?'),
         content: Text('This will update the vehicle return status to $status.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(status, style: const TextStyle(fontWeight: FontWeight.bold)),
+            child: Text(
+              status,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -45,13 +60,14 @@ class _StaffDashboardState extends State<StaffDashboard> {
       final doc = await docRef.get();
       if (doc.exists) {
         final data = doc.data()!;
-        final handover = Map<String, dynamic>.from(data['vehicleHandover'] ?? {});
+        final handover = data.vehicleHandover ?? {};
         handover['returnStatus'] = status;
         await docRef.update({'vehicleHandover': handover});
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Vehicle marked as $status')),
-          );
+          // Check if the widget is still in the tree
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Vehicle marked as $status')));
         }
       }
     }
@@ -64,9 +80,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
       appBar: AppBar(
         foregroundColor: Colors.white,
         title: const UserAppBarTitle(fallbackTitle: 'Staff'),
-        actions: const [
-          AppSettingsMenu(),
-        ],
+        actions: const [AppSettingsMenu()],
       ),
       body: Container(
         decoration: const BoxDecoration(gradient: AppColors.pageGradient),
@@ -113,147 +127,27 @@ class _StaffDashboardState extends State<StaffDashboard> {
                 ),
               ),
               const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: AppTheme.softCard(),
-                      child: StreamBuilder(
-                        stream: RentalService.bookingsStream(),
-                        builder: (context, snapshot) {
-                          final docs = snapshot.data?.docs ?? [];
-                          final open = docs.where((d) => (d.data()['status'] as String?) == 'Pending').length;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.pending_actions, color: AppColors.amber, size: 24),
-                              const SizedBox(height: 10),
-                              Text('$open', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
-                              const SizedBox(height: 4),
-                              const Text('Open', style: TextStyle(color: AppColors.muted, fontSize: 12)),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: AppTheme.softCard(),
-                      child: StreamBuilder(
-                        stream: RentalService.bookingsStream(),
-                        builder: (context, snapshot) {
-                          final docs = snapshot.data?.docs ?? [];
-                          final confirmed = docs.where((d) => (d.data()['status'] as String?) == 'Confirmed').length;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.verified, color: AppColors.mint, size: 24),
-                              const SizedBox(height: 10),
-                              Text('$confirmed', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
-                              const SizedBox(height: 4),
-                              const Text('Confirmed', style: TextStyle(color: AppColors.muted, fontSize: 12)),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: AppTheme.softCard(),
-                      child: StreamBuilder(
-                        stream: RentalService.bookingsStream(),
-                        builder: (context, snapshot) {
-                          final docs = snapshot.data?.docs ?? [];
-                          final checkedIn = docs.where((d) => (d.data()['status'] as String?) == 'Checked In').length;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.login, color: AppColors.sky, size: 24),
-                              const SizedBox(height: 10),
-                              Text('$checkedIn', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
-                              const SizedBox(height: 4),
-                              const Text('Checked In', style: TextStyle(color: AppColors.muted, fontSize: 12)),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: AppTheme.softCard(),
-                      child: StreamBuilder(
-                        stream: _customersCollection.snapshots(),
-                        builder: (context, snapshot) {
-                          final docs = snapshot.data?.docs ?? [];
-                          final pending = docs.where((d) {
-                            final handover = d.data()['vehicleHandover'] as Map<String, dynamic>?;
-                            return (handover?['returnStatus'] as String?) != 'Returned';
-                          }).length;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.schedule, color: AppColors.amber, size: 24),
-                              const SizedBox(height: 10),
-                              Text('$pending', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
-                              const SizedBox(height: 4),
-                              const Text('Return Pending', style: TextStyle(color: AppColors.muted, fontSize: 12)),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: AppTheme.softCard(),
-                      child: StreamBuilder(
-                        stream: _customersCollection.snapshots(),
-                        builder: (context, snapshot) {
-                          final docs = snapshot.data?.docs ?? [];
-                          final returnedToday = docs.where((d) {
-                            final handover = d.data()['vehicleHandover'] as Map<String, dynamic>?;
-                            return (handover?['returnStatus'] as String?) == 'Returned';
-                          }).length;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.check_circle, color: AppColors.mint, size: 24),
-                              const SizedBox(height: 10),
-                              Text('$returnedToday', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
-                              const SizedBox(height: 4),
-                              const Text('Total Returned', style: TextStyle(color: AppColors.muted, fontSize: 12)),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              _buildStatsCards(),
               const SizedBox(height: 20),
               Row(
                 children: [
-                  _FilterChip(label: 'All', isSelected: _returnFilter == 'All', onTap: () => setState(() => _returnFilter = 'All')),
+                  _FilterChip(
+                    label: 'All',
+                    isSelected: _returnFilter == 'All',
+                    onTap: () => setState(() => _returnFilter = 'All'),
+                  ),
                   const SizedBox(width: 8),
-                  _FilterChip(label: 'Return Pending', isSelected: _returnFilter == 'Pending', onTap: () => setState(() => _returnFilter = 'Pending')),
+                  _FilterChip(
+                    label: 'Return Pending',
+                    isSelected: _returnFilter == 'Pending',
+                    onTap: () => setState(() => _returnFilter = 'Pending'),
+                  ),
                   const SizedBox(width: 8),
-                  _FilterChip(label: 'Returned', isSelected: _returnFilter == 'Returned', onTap: () => setState(() => _returnFilter = 'Returned')),
+                  _FilterChip(
+                    label: 'Returned',
+                    isSelected: _returnFilter == 'Returned',
+                    onTap: () => setState(() => _returnFilter = 'Returned'),
+                  ),
                 ],
               ),
               const SizedBox(height: 24),
@@ -266,47 +160,8 @@ class _StaffDashboardState extends State<StaffDashboard> {
                 ),
               ),
               StreamBuilder(
-                stream: _customersCollection.orderBy('sDate', descending: true).snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: Padding(padding: EdgeInsets.all(12), child: SizedBox(height:24,width:24,child:CircularProgressIndicator(strokeWidth:2.5))));
-                  }
-                  var docs = snapshot.data?.docs ?? [];
-                  if (docs.isEmpty) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      child: Text('No customer entries available.', style: TextStyle(color: AppColors.muted)),
-                    );
-                  }
-                  if (_returnFilter != 'All') {
-                    docs = docs.where((d) {
-                      final handover = d.data()['vehicleHandover'] as Map<String, dynamic>?;
-                      final status = (handover?['returnStatus'] as String?) ?? 'Pending';
-                      if (_returnFilter == 'Pending') return status != 'Returned';
-                      if (_returnFilter == 'Returned') return status == 'Returned';
-                      return true;
-                    }).toList();
-                  }
-                  return Column(
-                    children: docs.map((doc) {
-                      final data = doc.data();
-                      final handover = data['vehicleHandover'] as Map<String, dynamic>?;
-                      final returnStatus = handover?['returnStatus'] as String? ?? 'Pending';
-                      return _CustomerEntryCard(
-                        custCode: doc.id,
-                        partyName: data['partyName'] ?? '',
-                        vehicleName: data['vehicleName'] ?? '',
-                        sDate: data['sDate'] ?? '',
-                        returnDate: data['returnDate'] ?? '',
-                        days: data['days'] ?? '',
-                        rate: data['rate'] ?? '',
-                        billAmount: data['billAmount'] ?? '',
-                        returnStatus: returnStatus,
-                        onStatusChange: _updateReturnStatus,
-                      );
-                    }).toList(),
-                  );
-                },
+                stream: _getFilteredCustomerStream(),
+                builder: _buildCustomerList,
               ),
               const SizedBox(height: 24),
               const Text(
@@ -321,25 +176,49 @@ class _StaffDashboardState extends State<StaffDashboard> {
                 stream: RentalService.bookingsStream(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: Padding(padding: EdgeInsets.all(12), child: SizedBox(height:24,width:24,child:CircularProgressIndicator(strokeWidth:2.5))));
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
+                        ),
+                      ),
+                    );
                   }
                   final docs = snapshot.data?.docs ?? [];
                   if (docs.isEmpty) {
                     return const Padding(
                       padding: EdgeInsets.symmetric(vertical: 12),
-                      child: Text('No bookings available.', style: TextStyle(color: AppColors.muted)),
+                      child: Text(
+                        'No bookings available.',
+                        style: TextStyle(color: AppColors.muted),
+                      ),
                     );
                   }
                   return Column(
                     children: docs.map((doc) {
                       final data = doc.data();
-                      final customerName = (data['customerName'] as String?) ?? (data['customer'] as String?) ?? 'Customer';
-                      final vehicleName = (data['vehicleName'] as String?) ?? 'Vehicle';
-                      final start = data['startAt'] is Timestamp ? (data['startAt'] as Timestamp).toDate() : null;
-                      final end = data['endAt'] is Timestamp ? (data['endAt'] as Timestamp).toDate() : null;
-                      final period = start != null && end != null ? '${start.day}-${start.month} - ${end.day}-${end.month}' : (data['rentalPeriod'] as String?) ?? '';
+                      final customerName =
+                          (data['customerName'] as String?) ??
+                          (data['customer'] as String?) ??
+                          'Customer';
+                      final vehicleName =
+                          (data['vehicleName'] as String?) ?? 'Vehicle';
+                      final start = data['startAt'] is Timestamp
+                          ? (data['startAt'] as Timestamp).toDate()
+                          : null;
+                      final end = data['endAt'] is Timestamp
+                          ? (data['endAt'] as Timestamp).toDate()
+                          : null;
+                      final period = start != null && end != null
+                          ? '${start.day}-${start.month} - ${end.day}-${end.month}'
+                          : (data['rentalPeriod'] as String?) ?? '';
                       final status = (data['status'] as String?) ?? 'Pending';
-                      final total = ((data['totalAmount'] as num?)?.toInt() ?? 0).toString();
+                      final total =
+                          ((data['totalAmount'] as num?)?.toInt() ?? 0)
+                              .toString();
 
                       return _BookingCard(
                         booking: Booking(
@@ -355,7 +234,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
                   );
                 },
               ),
-              const SizedBox(height: 92),
+              const SizedBox(height: 100), // Padding for the FAB
             ],
           ),
         ),
@@ -369,32 +248,186 @@ class _StaffDashboardState extends State<StaffDashboard> {
       ),
     );
   }
+
+  Stream<QuerySnapshot<Customer>> _getFilteredCustomerStream() {
+    Query<Customer> query = _customersCollection.orderBy(
+      'sDate',
+      descending: true,
+    );
+    if (_returnFilter == 'Returned') {
+      query = query.where(
+        'vehicleHandover.returnStatus',
+        isEqualTo: 'Returned',
+      );
+    } else if (_returnFilter == 'Pending') {
+      // Firestore doesn't support '!=' queries efficiently.
+      // We can query for 'is not null' if the field is absent in returned docs,
+      // or filter client-side as a fallback. Here we will filter client-side.
+    }
+    return query.snapshots();
+  }
+
+  Widget _buildCustomerList(
+    BuildContext context,
+    AsyncSnapshot<QuerySnapshot<Customer>> snapshot,
+  ) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(12),
+          child: SizedBox(
+            height: 24,
+            width: 24,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+        ),
+      );
+    }
+    if (snapshot.hasError) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          'Error: ${snapshot.error}',
+          style: const TextStyle(color: Colors.red),
+        ),
+      );
+    }
+
+    var docs = snapshot.data?.docs ?? [];
+    if (docs.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          'No customer entries available.',
+          style: TextStyle(color: AppColors.muted),
+        ),
+      );
+    }
+
+    // Client-side filter for 'Pending'
+    if (_returnFilter == 'Pending') {
+      docs = docs.where((doc) {
+        final customer = doc.data();
+        return customer.vehicleHandover?['returnStatus'] != 'Returned';
+      }).toList();
+    }
+
+    if (docs.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          'No pending customer entries found.',
+          style: TextStyle(color: AppColors.muted),
+        ),
+      );
+    }
+
+    return Column(
+      children: docs.map((doc) {
+        final customer = doc.data();
+        return _CustomerEntryCard(
+          customer: customer,
+          onStatusChange: _updateReturnStatus,
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildStatsCards() {
+    return StreamBuilder<List<QuerySnapshot>>(
+      stream: Future.wait([
+        RentalService.bookingsStream().first,
+        _customersCollection.snapshots().first,
+      ]).asStream(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const SizedBox(height: 150); // Placeholder height
+        }
+        final bookingDocs = snapshot.data![0].docs;
+        final customerDocs = snapshot.data![1].docs;
+
+        final openBookings = bookingDocs
+            .where((d) => (d.data() as Map)['status'] == 'Pending')
+            .length;
+        final confirmedBookings = bookingDocs
+            .where((d) => (d.data() as Map)['status'] == 'Confirmed')
+            .length;
+        final checkedInBookings = bookingDocs
+            .where((d) => (d.data() as Map)['status'] == 'Checked In')
+            .length;
+
+        final pendingReturns = customerDocs.where((d) {
+          final handover = (d.data() as Customer).vehicleHandover;
+          return handover?['returnStatus'] != 'Returned';
+        }).length;
+        final totalReturned = customerDocs.length - pendingReturns;
+
+        return Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: _StatCard(
+                    count: openBookings,
+                    label: 'Open',
+                    icon: Icons.pending_actions,
+                    color: AppColors.amber,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _StatCard(
+                    count: confirmedBookings,
+                    label: 'Confirmed',
+                    icon: Icons.verified,
+                    color: AppColors.mint,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _StatCard(
+                    count: checkedInBookings,
+                    label: 'Checked In',
+                    icon: Icons.login,
+                    color: AppColors.sky,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _StatCard(
+                    count: pendingReturns,
+                    label: 'Return Pending',
+                    icon: Icons.schedule,
+                    color: AppColors.amber,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _StatCard(
+                    count: totalReturned,
+                    label: 'Total Returned',
+                    icon: Icons.check_circle,
+                    color: AppColors.mint,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
 class _CustomerEntryCard extends StatelessWidget {
-  final String custCode;
-  final String partyName;
-  final String vehicleName;
-  final String sDate;
-  final String returnDate;
-  final String days;
-  final String rate;
-  final String billAmount;
-  final String returnStatus;
+  final Customer customer;
   final Function(String custCode, String status)? onStatusChange;
 
-  const _CustomerEntryCard({
-    required this.custCode,
-    required this.partyName,
-    required this.vehicleName,
-    required this.sDate,
-    required this.returnDate,
-    required this.days,
-    required this.rate,
-    required this.billAmount,
-    this.returnStatus = 'Pending',
-    this.onStatusChange,
-  });
+  const _CustomerEntryCard({required this.customer, this.onStatusChange});
 
   @override
   Widget build(BuildContext context) {
@@ -418,7 +451,7 @@ class _CustomerEntryCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      partyName.isNotEmpty ? partyName : 'Customer',
+                      customer.name.isNotEmpty ? customer.name : 'Customer',
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
@@ -427,14 +460,18 @@ class _CustomerEntryCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Code: $custCode',
+                      'Code: ${customer.custCode}',
                       style: const TextStyle(color: AppColors.muted),
                     ),
                   ],
                 ),
               ),
               Chip(
-                label: Text(vehicleName.isNotEmpty ? vehicleName : 'Vehicle'),
+                label: Text(
+                  customer.vehicleName.isNotEmpty
+                      ? customer.vehicleName
+                      : 'Vehicle',
+                ),
                 backgroundColor: AppColors.ember.withValues(alpha: 0.12),
                 labelStyle: const TextStyle(
                   color: AppColors.ember,
@@ -442,79 +479,165 @@ class _CustomerEntryCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              _ReturnStatusBadge(status: returnStatus),
+              _ReturnStatusBadge(
+                status: customer.vehicleHandover?['returnStatus'] ?? 'Pending',
+              ),
             ],
           ),
           const SizedBox(height: 16),
           Row(
             children: [
-              const Icon(Icons.calendar_month, size: 18, color: AppColors.muted),
+              const Icon(
+                Icons.calendar_month,
+                size: 18,
+                color: AppColors.muted,
+              ),
               const SizedBox(width: 8),
-              Text('$sDate - $returnDate', style: const TextStyle(color: AppColors.muted)),
+              Text(
+                '${customer.sDate} - ${customer.returnDate}',
+                style: const TextStyle(color: AppColors.muted),
+              ),
               const SizedBox(width: 16),
               const Icon(Icons.timer, size: 18, color: AppColors.muted),
               const SizedBox(width: 8),
-              Text('$days days', style: const TextStyle(color: AppColors.muted)),
+              Text(
+                '${customer.days} days',
+                style: const TextStyle(color: AppColors.muted),
+              ),
             ],
           ),
           const SizedBox(height: 10),
           Row(
             children: [
-              const Icon(Icons.currency_rupee, size: 18, color: AppColors.muted),
+              const Icon(
+                Icons.currency_rupee,
+                size: 18,
+                color: AppColors.muted,
+              ),
               const SizedBox(width: 8),
-              Text(billAmount.isNotEmpty ? billAmount : '0', style: const TextStyle(color: AppColors.muted)),
+              Text(
+                customer.billAmount.isNotEmpty ? customer.billAmount : '0',
+                style: const TextStyle(color: AppColors.muted),
+              ),
               const SizedBox(width: 16),
               const Text('Rate: ', style: TextStyle(color: AppColors.muted)),
-              Text(rate.isNotEmpty ? rate : '0', style: const TextStyle(color: AppColors.muted)),
+              Text(
+                customer.rate.isNotEmpty ? customer.rate : '0',
+                style: const TextStyle(color: AppColors.muted),
+              ),
             ],
           ),
           const SizedBox(height: 16),
+          // Use a Row to make the Wrap take the full width, allowing alignment to work correctly.
           Row(
-            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              TextButton(
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => ChallanEntryScreen(custCode: custCode),
-                  ));
-                },
-                child: const Text('Edit'),
-              ),
-              const SizedBox(width: 8),
-              TextButton(
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => InvoicePreviewScreen(custCode: custCode),
-                  ));
-                },
-                child: const Text('Invoice'),
-              ),
-              if (returnStatus != 'Returned') ...[
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: () {
-                    if (onStatusChange != null) {
-                      onStatusChange!(custCode, 'Returned');
-                    }
-                  },
-                  child: const Text('Mark Returned'),
-                ),
-              ],
-              const SizedBox(width: 8),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => PaymentRecordScreen(custCode: custCode),
-                  ));
-                },
-                icon: const Icon(Icons.currency_rupee, size: 18),
-                label: const Text('Payment'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.mint,
-                  foregroundColor: Colors.white,
+              Expanded(
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 8.0,
+                  runSpacing: 4.0,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                ChallanEntryScreen(custCode: customer.custCode),
+                          ),
+                        );
+                      },
+                      child: const Text('Edit'),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => InvoicePreviewScreen(
+                              custCode: customer.custCode,
+                            ),
+                          ),
+                        );
+                      },
+                      child: const Text('Invoice'),
+                    ),
+                    if (customer.vehicleHandover?['returnStatus'] !=
+                        'Returned') ...[
+                      TextButton(
+                        onPressed: () {
+                          if (onStatusChange != null) {
+                            onStatusChange!(customer.custCode, 'Returned');
+                          }
+                        },
+                        child: const Text('Mark Returned'),
+                      ),
+                    ],
+                    if (customer.vehicleHandover?['returnStatus'] == 'Returned')
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PaymentRecordScreen(
+                                custCode: customer.custCode,
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.currency_rupee, size: 18),
+                        label: const Text('Payment'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.mint,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  final int count;
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  const _StatCard({
+    required this.count,
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: AppTheme.softCard(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 10),
+          Text(
+            '$count',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: AppColors.ink,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(color: AppColors.muted, fontSize: 12),
           ),
         ],
       ),
@@ -540,10 +663,14 @@ class _FilterChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.ember : Colors.white.withValues(alpha: 0.12),
+          color: isSelected
+              ? AppColors.ember
+              : Colors.white.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? AppColors.ember : Colors.white.withValues(alpha: 0.3),
+            color: isSelected
+                ? AppColors.ember
+                : Colors.white.withValues(alpha: 0.3),
           ),
         ),
         child: Text(

@@ -1,5 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class QRCodePayment {
-  final String id;
+  final String? id;
   final String name;
   final String imageUrl;
   final String upiId;
@@ -7,7 +9,7 @@ class QRCodePayment {
   final bool isActive;
 
   QRCodePayment({
-    this.id = '',
+    this.id,
     this.name = '',
     this.imageUrl = '',
     this.upiId = '',
@@ -55,5 +57,19 @@ class QRCodePayment {
     );
   }
 
-  bool get isEmpty => id.isEmpty && name.isEmpty && imageUrl.isEmpty;
+  factory QRCodePayment.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data() ?? {};
+    return QRCodePayment(
+      id: doc.id,
+      name: data['name'] ?? '',
+      imageUrl: data['imageUrl'] ?? '',
+      upiId: data['upiId'] ?? '',
+      description: data['description'] ?? '',
+      isActive: data['isActive'] ?? true,
+    );
+  }
+
+  bool get isEmpty => (id?.isEmpty ?? true) && name.isEmpty && imageUrl.isEmpty;
 }

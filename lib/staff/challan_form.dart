@@ -704,7 +704,9 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
   Future<void> _saveChallanEntry(ChallanEntry entry) async {
     try {
       final data = entry.toMap();
-      debugPrint('Saving Challan with transportation: ${entry.transportation?.toMap()}');
+      debugPrint(
+        'Saving Challan with transportation: ${entry.transportation?.toMap()}',
+      );
 
       // Save only to customers collection
       await ChallanForm._customersCollection.doc(entry.custCode).set(data);
@@ -775,7 +777,9 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  _isEditMode ? 'Edit Challan' : 'Challan Entry',
+                                  _isEditMode
+                                      ? 'Edit Challan'
+                                      : 'Challan Entry',
                                   style: const TextStyle(
                                     fontSize: 22,
                                     fontWeight: FontWeight.w900,
@@ -950,7 +954,9 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                       children: [
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            initialValue: vehicleController.text.isEmpty ? null : vehicleController.text,
+                            initialValue: vehicleController.text.isEmpty
+                                ? null
+                                : vehicleController.text,
                             decoration: InputDecoration(
                               labelText: 'Vehicle Name',
                               border: OutlineInputBorder(
@@ -962,11 +968,26 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                               ),
                             ),
                             items: const [
-                              DropdownMenuItem(value: 'Activa', child: Text('Activa')),
-                              DropdownMenuItem(value: 'Access', child: Text('Access')),
-                              DropdownMenuItem(value: 'Splendor', child: Text('Splendor')),
-                              DropdownMenuItem(value: 'Honda Shine', child: Text('Honda Shine')),
-                              DropdownMenuItem(value: 'Classic 350', child: Text('Classic 350')),
+                              DropdownMenuItem(
+                                value: 'Activa',
+                                child: Text('Activa'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Access',
+                                child: Text('Access'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Splendor',
+                                child: Text('Splendor'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Honda Shine',
+                                child: Text('Honda Shine'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Classic 350',
+                                child: Text('Classic 350'),
+                              ),
                             ],
                             onChanged: (value) {
                               vehicleController.text = value ?? '';
@@ -1122,13 +1143,21 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.local_shipping, size: 20, color: AppColors.ember),
+                          Icon(
+                            Icons.local_shipping,
+                            size: 20,
+                            color: AppColors.ember,
+                          ),
                           const SizedBox(width: 8),
                           Text(
-                            _transportationData != null && !_transportationData!.isEmpty
+                            _transportationData != null &&
+                                    !_transportationData!.isEmpty
                                 ? 'Transportation Details (Added)'
                                 : 'Transportation Details',
-                            style: TextStyle(fontSize: 16, color: AppColors.ember),
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: AppColors.ember,
+                            ),
                           ),
                         ],
                       ),

@@ -15,7 +15,9 @@ class PaymentRecordScreen extends StatefulWidget {
 }
 
 class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
-  final _customersCollection = FirebaseFirestore.instance.collection('customers');
+  final _customersCollection = FirebaseFirestore.instance.collection(
+    'customers',
+  );
   final _amountController = TextEditingController();
   final _transactionController = TextEditingController();
   final _notesController = TextEditingController();
@@ -34,8 +36,17 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
   }
 
   Future<void> _loadQRCodes() async {
-    _qrCodes = await QRPaymentService.getActiveQRCodes();
-    if (mounted) setState(() => _isLoading = false);
+    // Ensure the loading state is always reset, even if an error occurs.
+    try {
+      final codes = await QRPaymentService.getActiveQRCodes();
+      if (mounted) {
+        setState(() {
+          _qrCodes = codes;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -126,7 +137,10 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Select QR Code to Pay', style: TextStyle(fontWeight: FontWeight.w600)),
+        const Text(
+          'Select QR Code to Pay',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
         const SizedBox(height: 12),
         GridView.builder(
           shrinkWrap: true,
@@ -160,7 +174,10 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
                     ),
                     Padding(
                       padding: const EdgeInsets.all(8),
-                      child: Text(qr.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      child: Text(
+                        qr.name,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
                     ),
                   ],
                 ),
@@ -207,9 +224,9 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
 
   Future<void> _savePayment() async {
     if (_amountController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Amount is required')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Amount is required')));
       return;
     }
 
@@ -232,16 +249,16 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Payment recorded')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Payment recorded')));
         Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
 
