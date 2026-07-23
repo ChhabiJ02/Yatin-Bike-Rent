@@ -61,8 +61,12 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Invoice'),
-        backgroundColor: AppColors.ember,
         foregroundColor: Colors.white,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: AppColors.heroGradient,
+          ),
+        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -157,16 +161,25 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ElevatedButton.icon(
-          onPressed: _isGenerating ? null : _generateInvoice,
-          icon: _isGenerating
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Icon(Icons.picture_as_pdf),
-          label: Text(_isGenerating ? 'Generating...' : 'Generate Invoice PDF'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.ember,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: AppColors.heroGradient,
+            ),
+            child: ElevatedButton.icon(
+              onPressed: _isGenerating ? null : _generateInvoice,
+              icon: _isGenerating
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.picture_as_pdf),
+              label: Text(_isGenerating ? 'Generating...' : 'Generate Invoice PDF'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 12),

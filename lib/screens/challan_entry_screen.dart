@@ -320,7 +320,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditMode ? 'Edit Challan' : 'New Challan'),
+        title: Text(_isEditMode ? 'Edit Challan' : 'New Challan',style: const TextStyle(color: Colors.white)),
         backgroundColor: AppColors.ember,
         foregroundColor: Colors.white,
       ),

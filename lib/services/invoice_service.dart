@@ -29,7 +29,7 @@ class InvoiceService {
                 width: double.infinity,
                 padding: const pw.EdgeInsets.all(16),
                 decoration: pw.BoxDecoration(
-                  color: PdfColor.fromHex('#E86F25'),
+                  color: PdfColor.fromHex('312E81'),
                   borderRadius: pw.BorderRadius.circular(8),
                 ),
                 child: pw.Row(
@@ -115,7 +115,7 @@ class InvoiceService {
                       style: pw.TextStyle(
                         fontSize: 14,
                         fontWeight: pw.FontWeight.bold,
-                        color: PdfColor.fromHex('#E86F25'),
+                        color: PdfColor.fromHex('312E81'),
                       ),
                     ),
                     pw.SizedBox(height: 8),
@@ -154,7 +154,7 @@ class InvoiceService {
                       style: pw.TextStyle(
                         fontSize: 14,
                         fontWeight: pw.FontWeight.bold,
-                        color: PdfColor.fromHex('#E86F25'),
+                        color: PdfColor.fromHex('312E81'),
                       ),
                     ),
                     pw.SizedBox(height: 8),
@@ -185,7 +185,7 @@ class InvoiceService {
                       style: pw.TextStyle(
                         fontSize: 14,
                         fontWeight: pw.FontWeight.bold,
-                        color: PdfColor.fromHex('#E86F25'),
+                        color: PdfColor.fromHex('312E81'),
                       ),
                     ),
                     pw.SizedBox(height: 8),
@@ -221,7 +221,7 @@ class InvoiceService {
                       style: pw.TextStyle(
                         fontSize: 14,
                         fontWeight: pw.FontWeight.bold,
-                        color: PdfColor.fromHex('#E86F25'),
+                        color: PdfColor.fromHex('312E81'),
                       ),
                     ),
                     pw.SizedBox(height: 8),
@@ -263,7 +263,7 @@ class InvoiceService {
                     pw.Container(
                       width: double.infinity,
                       padding: const pw.EdgeInsets.symmetric(vertical: 8),
-                      color: PdfColor.fromHex('#E86F25'),
+                      color: PdfColor.fromHex('312E81'),
                       child: pw.Row(
                         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                         children: [
