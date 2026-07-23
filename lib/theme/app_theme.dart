@@ -3,18 +3,21 @@ import 'package:flutter/material.dart';
 class AppColors {
   static const ink = Color(0xFF101525);
   static const navy = Color(0xFF181D33);
-  static const ember = Color(0xFFE86F25);
-  static const amber = Color(0xFFFFB84D);
+  
+  // 💡 Orange (Ember) ની જગ્યાએ Indigo Accent કલર
+  static const ember = Color(0xFF312E81); 
+  static const amber = Color.fromARGB(255, 212, 151, 59);
   static const mint = Color(0xFF21C7A8);
   static const sky = Color(0xFF38A5FF);
   static const paper = Color(0xFFF6F7FB);
   static const card = Color(0xFFFFFFFF);
-  static const muted = Color(0xFF6E7483);
+  static const muted = Color.fromARGB(255, 83, 87, 99);
 
+  // 💡 Splash Gradient માં પણ Indigo Tint સેટ કર્યો
   static const splashGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [ink, navy, Color(0xFF7B3419), ember],
+    colors: [ink, navy, Color(0xFF312E81), Color(0xFF312E81)],
     stops: [0, 0.34, 0.68, 1],
   );
 
@@ -25,10 +28,11 @@ class AppColors {
     stops: [0, 0.42, 1],
   );
 
+  // 💡 નવું Light Indigo & Cyan Attractive Hero Gradient
   static const heroGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [ember, amber, mint],
+    colors: [Color(0xFF312E81), Color(0xFFCFFAFE)],
   );
 }
 
@@ -37,8 +41,8 @@ class AppTheme {
     final base = ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: AppColors.ember,
-        primary: AppColors.ember,
+        seedColor:Color(0xFF312E81),
+        primary: Color(0xFF312E81),
         secondary: AppColors.mint,
         surface: AppColors.card,
       ),
@@ -77,16 +81,16 @@ class AppTheme {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: Colors.black.withAlpha(15)), // ~0.06 alpha
+          borderSide: BorderSide(color: Colors.black.withAlpha(15)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.ember, width: 1.8),
+          borderSide: const BorderSide(color:Color(0xFF312E81), width: 1.8),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.ember,
+          backgroundColor:Color(0xFF312E81),
           foregroundColor: Colors.white,
           elevation: 0,
           shape: RoundedRectangleBorder(
@@ -99,7 +103,7 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.ink,
-          side: BorderSide(color: AppColors.ink.withAlpha(30)), // ~0.12 alpha
+          side: BorderSide(color: AppColors.ink.withAlpha(30)),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -117,7 +121,7 @@ class AppTheme {
     Color bgColor = AppColors.card,
     Color? borderColor,
   }) {
-    final bColor = borderColor ?? Colors.black.withAlpha(10); // ~0.04 alpha
+    final bColor = borderColor ?? Colors.black.withAlpha(10);
     return BoxDecoration(
       color: bgColor,
       borderRadius: BorderRadius.circular(24),
@@ -126,7 +130,7 @@ class AppTheme {
           : Border.all(color: bColor),
       boxShadow: [
         BoxShadow(
-          color: AppColors.ink.withAlpha(20), // ~0.08 alpha
+          color: AppColors.ink.withAlpha(20),
           blurRadius: 26,
           offset: const Offset(0, 14),
         ),

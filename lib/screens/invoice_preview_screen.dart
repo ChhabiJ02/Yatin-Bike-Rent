@@ -201,7 +201,8 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
-          onPressed: _pdfBytes != null ? _sharePdf : null,
+          onPressed: _pdfBytes != null ? _shareOnWhatsApp : null,
+          //onPressed: _pdfBytes != null ? _sharePdf : null,
           icon: const Icon(Icons.share),
           label: const Text('Share PDF'),
           style: OutlinedButton.styleFrom(
@@ -212,7 +213,8 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
-          onPressed: _pdfBytes != null ? _shareOnWhatsApp : null,
+          onPressed: _pdfBytes != null ? _sharePdf : null,          
+          //onPressed: _pdfBytes != null ? _shareOnWhatsApp : null,
           icon: const Icon(Icons.chat),
           label: const Text('Send via WhatsApp'),
           style: OutlinedButton.styleFrom(

@@ -240,7 +240,7 @@ class _StaffProfileScreenState extends State<_StaffProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profile'),
+        title: const Text('Profile',style: TextStyle(color: Colors.white)),
         backgroundColor: AppColors.ember,
         foregroundColor: Colors.white,
       ),

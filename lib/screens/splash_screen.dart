@@ -209,7 +209,7 @@ class _SplashScreenState extends State<SplashScreen>
                                           borderRadius: BorderRadius.circular(2),
                                           boxShadow: [
                                             BoxShadow(
-                                              color: Colors.orange.withValues(alpha: 0.5),
+                                              color: AppColors.heroGradient.colors.first.withValues(alpha: 0.5),
                                               blurRadius: 8,
                                             ),
                                           ],
@@ -274,7 +274,7 @@ class _SplashScreenState extends State<SplashScreen>
                         child: FadeTransition(
                           opacity: _textOpacity,
                           child: Text(
-                            "Made by Rex Solution'S",
+                            "By Rex Solution'S",
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.75),
