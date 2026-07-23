@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/customer_documents.dart';
+import '../models/customer.dart';
 import '../models/vehicle_handover.dart';
 import '../models/travel_details.dart';
 import '../models/kilometer_details.dart';
@@ -23,6 +24,8 @@ class ChallanEntryScreen extends StatefulWidget {
 class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   final _formKey = GlobalKey<FormState>();
   final _customersCollection = FirebaseFirestore.instance.collection('customers');
+  final _vehiclesCollection = FirebaseFirestore.instance.collection('vehicles');
+  final _paymentSettingsCollection = FirebaseFirestore.instance.collection('paymentSettings');
 
   // Controllers
   final _custCodeController = TextEditingController();
@@ -93,12 +96,15 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     'Other',
   ];
 
-  // New section data
   CustomerDocuments? _customerDocuments;
   VehicleHandover? _vehicleHandover;
   TravelDetails? _travelDetails;
   KilometerDetails? _kilometerDetails;
   Transportation? _transportation;
+
+  // State for selected QR Code
+  String? _selectedQRCodeId;
+  String? _selectedQRCodeImageUrl;
 
   bool _isEditMode = false;
   bool _isSaving = false;
@@ -107,10 +113,18 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     return '${dt.day.toString().padLeft(2, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
   }
 
+  // Auto calculate Bill Amount
+  void _calculateBillAmount() {
+    final double days = double.tryParse(_daysController.text.trim()) ?? 0;
+    final double rate = double.tryParse(_rateController.text.trim()) ?? 0;
+    final double total = days * rate;
+    
+    // Formatting to strip trailing decimals if whole number
+    _billAmountController.text = total % 1 == 0 ? total.toInt().toString() : total.toStringAsFixed(2);
+  }
+
   Future<void> _generateCustomerCode(String fyear) async {
-    if (_isEditMode) {
-      return;
-    }
+    if (_isEditMode) return;
 
     try {
       final code = await ChallanService.generateCustomerCodeForFinancialYear(fyear);
@@ -122,8 +136,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     }
   }
 
-  /// Acquire a unique customer code inside a transaction right before saving.
-  /// This ensures no two concurrent saves receive the same code.
   Future<void> _acquireCustomerCodeForSave(String fyear) async {
     if (_isEditMode) return;
 
@@ -141,22 +153,47 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   @override
   void initState() {
     super.initState();
-    // Set Date and FYear automatically
     final initialFyear = ChallanService.getCurrentFinancialYear();
     _dateController.text = _formatDateTime(DateTime.now());
     _fyearController.text = initialFyear;
 
+    // Days અને Rate માં ફેરફાર થાય ત્યારે Bill Amount ઓટોમેટિક ગણાશે
+    _daysController.addListener(_calculateBillAmount);
+    _rateController.addListener(_calculateBillAmount);
+
     if (widget.custCode != null) {
-      // Edit mode - load existing data without generating a new code
       _custCodeController.text = widget.custCode ?? '';
       _isEditMode = true;
       _loadExistingData();
     } else {
-      // New entry mode - leave the field blank while the next customer code is generated.
       _custCodeController.text = '';
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _generateCustomerCode(initialFyear);
       });
+    }
+  }
+
+  DateTime? _parseDate(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return null;
+    try {
+      final parts = dateStr.split('-');
+      if (parts.length != 3) return null;
+      return DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+    } catch (e) {
+      debugPrint("Error parsing date: $dateStr, $e");
+      return null;
+    }
+  }
+
+  TimeOfDay? _parseTime(String? timeStr) {
+    if (timeStr == null || timeStr.isEmpty) return null;
+    try {
+      final parts = timeStr.split(':');
+      if (parts.length != 2) return null;
+      return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+    } catch (e) {
+      debugPrint("Error parsing time: $timeStr, $e");
+      return null;
     }
   }
 
@@ -165,56 +202,52 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     final doc = await _customersCollection.doc(widget.custCode).get();
     if (doc.exists && mounted) {
       final data = doc.data()!;
-      _partyNameController.text = data['partyName'] ?? '';
-      _addressController.text = data['address'] ?? '';
-      _phoneController.text = data['smsPhone'] ?? '';
-      _aadharController.text = data['aadharNo'] ?? '';
-      _licenseController.text = data['licenceNo'] ?? '';
-      _vehicleController.text = data['vehicleName'] ?? '';
-      _daysController.text = data['days'] ?? '';
-      _rateController.text = data['rate'] ?? '';
-      _billAmountController.text = data['billAmount'] ?? '';
-      // Load existing date and financial year (don't regenerate for editing)
+      final customer = Customer.fromFirestore(doc);
+
+      _partyNameController.text = customer.name;
+      _addressController.text = customer.address;
+      _phoneController.text = customer.smsPhone;
+      _aadharController.text = customer.aadharNo;
+      _licenseController.text = customer.licenceNo;
+      _vehicleController.text = customer.vehicleName;
+      _daysController.text = customer.days;
+      _rateController.text = customer.rate;
+      _billAmountController.text = customer.billAmount;
+
       _dateController.text = data['sDate'] ?? _dateController.text;
       _fyearController.text = data['fyear'] ?? _fyearController.text;
 
       if (data['customerDocuments'] != null) {
-        _customerDocuments = CustomerDocuments.fromMap(Map<String, dynamic>.from(data['customerDocuments']));
+        _customerDocuments = CustomerDocuments.fromMap(
+          Map<String, dynamic>.from(data['customerDocuments']),
+        );
       }
       if (data['vehicleHandover'] != null) {
-        _vehicleHandover = VehicleHandover.fromMap(Map<String, dynamic>.from(data['vehicleHandover']));
+        _vehicleHandover = VehicleHandover.fromMap(
+          Map<String, dynamic>.from(data['vehicleHandover']),
+        );
         _vehicleNumberController.text = _vehicleHandover!.vehicleNumber;
         _pickupLocationController.text = _vehicleHandover!.vehiclePickupLocation;
         _returnLocationController.text = _vehicleHandover!.vehicleReturnLocation;
         _vehicleCameFromController.text = _vehicleHandover!.vehicleCameFrom;
         _vehicleReturnedToController.text = _vehicleHandover!.vehicleReturnedTo;
         if (_vehicleHandover!.vehicleGivenDate.isNotEmpty) {
-          final parts = _vehicleHandover!.vehicleGivenDate.split('-');
-          if (parts.length == 3) {
-            _vehicleGivenDate = DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
-          }
+          _vehicleGivenDate = _parseDate(_vehicleHandover!.vehicleGivenDate);
         }
         if (_vehicleHandover!.vehicleGivenTime.isNotEmpty) {
-          final parts = _vehicleHandover!.vehicleGivenTime.split(':');
-          if (parts.length == 2) {
-            _vehicleGivenTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
-          }
+          _vehicleGivenTime = _parseTime(_vehicleHandover!.vehicleGivenTime);
         }
         if (_vehicleHandover!.vehicleReturnDate.isNotEmpty) {
-          final parts = _vehicleHandover!.vehicleReturnDate.split('-');
-          if (parts.length == 3) {
-            _vehicleReturnDate = DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
-          }
+          _vehicleReturnDate = _parseDate(_vehicleHandover!.vehicleReturnDate);
         }
         if (_vehicleHandover!.vehicleReturnTime.isNotEmpty) {
-          final parts = _vehicleHandover!.vehicleReturnTime.split(':');
-          if (parts.length == 2) {
-            _vehicleReturnTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
-          }
+          _vehicleReturnTime = _parseTime(_vehicleHandover!.vehicleReturnTime);
         }
       }
       if (data['travelDetails'] != null) {
-        _travelDetails = TravelDetails.fromMap(Map<String, dynamic>.from(data['travelDetails']));
+        _travelDetails = TravelDetails.fromMap(
+          Map<String, dynamic>.from(data['travelDetails']),
+        );
         _customerCameFromController.text = _travelDetails!.customerCameFrom;
         _stayingAtController.text = _travelDetails!.stayingAt;
         _hotelNameController.text = _travelDetails!.hotelName;
@@ -225,12 +258,24 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         _pinCodeController.text = _travelDetails!.pinCode;
       }
       if (data['kilometerDetails'] != null) {
-        _kilometerDetails = KilometerDetails.fromMap(Map<String, dynamic>.from(data['kilometerDetails']));
+        _kilometerDetails = KilometerDetails.fromMap(
+          Map<String, dynamic>.from(data['kilometerDetails']),
+        );
         _startKMController.text = _kilometerDetails!.startKM.toString();
         _endKMController.text = _kilometerDetails!.endKM.toString();
       }
       if (data['transportation'] != null) {
-        _transportation = Transportation.fromMap(Map<String, dynamic>.from(data['transportation']));
+        _transportation = Transportation.fromMap(
+          Map<String, dynamic>.from(data['transportation']),
+        );
+      }
+      _selectedQRCodeId = data['qrCodeId'];
+      if (_selectedQRCodeId != null && _selectedQRCodeId!.isNotEmpty) {
+        final qrDoc = await _paymentSettingsCollection.doc(_selectedQRCodeId).get();
+        if (qrDoc.exists) {
+          final qrData = qrDoc.data() as Map<String, dynamic>;
+          _selectedQRCodeImageUrl = qrData['imageUrl'];
+        }
       }
       setState(() {});
     }
@@ -238,6 +283,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
   @override
   void dispose() {
+    _daysController.removeListener(_calculateBillAmount);
+    _rateController.removeListener(_calculateBillAmount);
+
     _custCodeController.dispose();
     _dateController.dispose();
     _fyearController.dispose();
@@ -283,15 +331,23 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Customer Code, Date, Financial Year - Read-only fields at top
               _buildSectionHeader('Entry Info'),
               _buildReadOnlyField('Customer Code', _custCodeController),
               _buildTextField('Date', _dateController),
               _buildReadOnlyField('Financial Year', _fyearController),
               const SizedBox(height: 24),
               _buildSectionHeader('Customer Details'),
-              _buildTextField('Party Name', _partyNameController, required: true),
-              _buildTextField('Phone', _phoneController, keyboardType: TextInputType.phone, required: true),
+              _buildTextField(
+                'Party Name',
+                _partyNameController,
+                required: true,
+              ),
+              _buildTextField(
+                'Phone',
+                _phoneController,
+                keyboardType: TextInputType.phone,
+                required: true,
+              ),
               _buildTextField('Address', _addressController, maxLines: 2),
               _buildTextField('Aadhar No.', _aadharController),
               _buildTextField('License No.', _licenseController),
@@ -311,8 +367,12 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               _buildSectionHeader('Booking Info'),
               _buildBookingSection(),
               const SizedBox(height: 24),
+              _buildSectionHeader('Payment Method'),
+              _buildPaymentMethodDropdown(),
+              const SizedBox(height: 12),
+              _buildQRCodeImagePreview(),
+              const SizedBox(height: 24),
 
-              // Transportation Details Button
               OutlinedButton.icon(
                 onPressed: () async {
                   final result = await Navigator.push<Transportation>(
@@ -347,7 +407,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
               const SizedBox(height: 32),
               ElevatedButton(
-                onPressed: _isSaving ? null : _saveChallan,
+                onPressed: _isSaving ? null : _saveCustomer,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.ember,
                   foregroundColor: Colors.white,
@@ -378,7 +438,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     );
   }
 
-  Widget _buildTextField(String label, TextEditingController controller, {
+  Widget _buildTextField(
+    String label,
+    TextEditingController controller, {
     int maxLines = 1,
     TextInputType? keyboardType,
     bool required = false,
@@ -393,7 +455,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           labelText: label,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
-        validator: required ? (v) => v == null || v.isEmpty ? '$label required' : null : null,
+        validator: required
+            ? (v) => v == null || v.isEmpty ? '$label required' : null
+            : null,
       ),
     );
   }
@@ -428,7 +492,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         FormImagePicker(
           label: 'Aadhaar Front',
           imageUrl: _customerDocuments?.aadhaarFront,
-          folder: 'documents/${_custCodeController.text}/aadhaar',
+          folder: 'documents/${widget.custCode ?? 'new'}/aadhaar',
           isRequired: true,
           onImageSelected: (url) {
             setState(() {
@@ -440,7 +504,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         FormImagePicker(
           label: 'Aadhaar Back',
           imageUrl: _customerDocuments?.aadhaarBack,
-          folder: 'documents/${_custCodeController.text}/aadhaar',
+          folder: 'documents/${widget.custCode ?? 'new'}/aadhaar',
           isRequired: true,
           onImageSelected: (url) {
             setState(() {
@@ -452,7 +516,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         FormImagePicker(
           label: 'License Front',
           imageUrl: _customerDocuments?.licenseFront,
-          folder: 'documents/${_custCodeController.text}/license',
+          folder: 'documents/${widget.custCode ?? 'new'}/license',
           isRequired: true,
           onImageSelected: (url) {
             setState(() {
@@ -464,7 +528,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         FormImagePicker(
           label: 'License Back',
           imageUrl: _customerDocuments?.licenseBack,
-          folder: 'documents/${_custCodeController.text}/license',
+          folder: 'documents/${widget.custCode ?? 'new'}/license',
           isRequired: true,
           onImageSelected: (url) {
             setState(() {
@@ -476,7 +540,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         FormImagePicker(
           label: 'Customer with Vehicle',
           imageUrl: _customerDocuments?.customerVehiclePhoto,
-          folder: 'documents/${_custCodeController.text}/vehicle',
+          folder: 'documents/${widget.custCode ?? 'new'}/vehicle',
           isRequired: true,
           onImageSelected: (url) {
             setState(() {
@@ -488,7 +552,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         FormImagePicker(
           label: 'Travel Ticket (Optional)',
           imageUrl: _customerDocuments?.travelTicketPhoto,
-          folder: 'documents/${_custCodeController.text}/travel',
+          folder: 'documents/${widget.custCode ?? 'new'}/travel',
           onImageSelected: (url) {
             setState(() {
               _customerDocuments = (_customerDocuments ?? CustomerDocuments())
@@ -500,44 +564,157 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     );
   }
 
+  /// Firebase mathi Vehicle Names nu Dropdown Load karva mate
+  Widget _buildVehicleDropdown() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _vehiclesCollection.snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text('Error loading vehicles: ${snapshot.error}'),
+          );
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final docs = snapshot.data?.docs ?? [];
+        final vehicleItems = docs.map((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return {
+            'name': data['name']?.toString() ?? '',
+            'dailyRate': data['dailyRate']?.toString() ?? '0',
+            'number': data['number']?.toString() ?? '',
+          };
+        }).where((v) => v['name']!.isNotEmpty).toList();
+
+        // Check if currently selected vehicle exists in the list
+        String? selectedValue;
+        if (_vehicleController.text.isNotEmpty) {
+          final exists = vehicleItems.any((v) => v['name'] == _vehicleController.text);
+          if (exists) {
+            selectedValue = _vehicleController.text;
+          }
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: DropdownButtonFormField<String>(
+            value: selectedValue,
+            decoration: InputDecoration(
+              labelText: 'Vehicle Name',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            items: vehicleItems.map((vehicle) {
+              return DropdownMenuItem<String>(
+                value: vehicle['name'],
+                child: Text(vehicle['name']!),
+              );
+            }).toList(),
+            onChanged: (value) {
+              if (value != null) {
+                setState(() {
+                  _vehicleController.text = value;
+
+                  // Selected Vehicle no dailyRate & Number automatically fill karva mate
+                  final selectedVehicleData = vehicleItems.firstWhere(
+                    (v) => v['name'] == value,
+                    orElse: () => {'dailyRate': '', 'number': ''},
+                  );
+
+                  if (selectedVehicleData['dailyRate']!.isNotEmpty) {
+                    _rateController.text = selectedVehicleData['dailyRate']!;
+                  }
+                  if (selectedVehicleData['number']!.isNotEmpty) {
+                    _vehicleNumberController.text = selectedVehicleData['number']!;
+                  }
+                });
+              }
+            },
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildVehicleHandoverSection() {
     return Column(
       children: [
-        _buildTextField('Vehicle Name', _vehicleController),
+        // Updated Vehicle Name field to dynamic dropdown
+        _buildVehicleDropdown(),
         _buildTextField('Vehicle Number', _vehicleNumberController),
-        _buildDropdownField('Pickup Location', _pickupLocationController, _pickupLocations),
-        _buildDropdownField('Return Location', _returnLocationController, _pickupLocations),
+        _buildDropdownField(
+          'Pickup Location',
+          _pickupLocationController,
+          _pickupLocations,
+        ),
+        _buildDropdownField(
+          'Return Location',
+          _returnLocationController,
+          _pickupLocations,
+        ),
         const SizedBox(height: 12),
-        _buildDateTimePicker('Vehicle Given Date', _vehicleGivenDate, _vehicleGivenTime, (date, time) {
-          setState(() {
-            _vehicleGivenDate = date;
-            _vehicleGivenTime = time;
-          });
-        }),
+        _buildDateTimePicker(
+          'Vehicle Given Date',
+          _vehicleGivenDate,
+          _vehicleGivenTime,
+          (date, time) {
+            setState(() {
+              _vehicleGivenDate = date;
+              _vehicleGivenTime = time;
+            });
+          },
+        ),
         const SizedBox(height: 12),
-        _buildDateTimePicker('Vehicle Return Date', _vehicleReturnDate, _vehicleReturnTime, (date, time) {
-          setState(() {
-            _vehicleReturnDate = date;
-            _vehicleReturnTime = time;
-          });
-        }),
+        _buildDateTimePicker(
+          'Vehicle Return Date',
+          _vehicleReturnDate,
+          _vehicleReturnTime,
+          (date, time) {
+            setState(() {
+              _vehicleReturnDate = date;
+              _vehicleReturnTime = time;
+            });
+          },
+        ),
         const SizedBox(height: 12),
-        _buildDropdownField('Vehicle Came From', _vehicleCameFromController, _pickupLocations),
-        _buildDropdownField('Vehicle Returned To', _vehicleReturnedToController, _pickupLocations),
+        _buildDropdownField(
+          'Vehicle Came From',
+          _vehicleCameFromController,
+          _pickupLocations,
+        ),
+        _buildDropdownField(
+          'Vehicle Returned To',
+          _vehicleReturnedToController,
+          _pickupLocations,
+        ),
       ],
     );
   }
 
-  Widget _buildDropdownField(String label, TextEditingController controller, List<String> options) {
+  Widget _buildDropdownField(
+    String label,
+    TextEditingController controller,
+    List<String> options,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<String>(
-        initialValue: controller.text.isEmpty ? null : controller.text,
+        value: controller.text.isEmpty ? null : controller.text,
         decoration: InputDecoration(
           labelText: label,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
-        items: options.map((option) => DropdownMenuItem(value: option, child: Text(option))).toList(),
+        items: options
+            .map(
+              (option) => DropdownMenuItem(value: option, child: Text(option)),
+            )
+            .toList(),
         onChanged: (value) {
           if (value != null) {
             controller.text = value;
@@ -592,8 +769,16 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   Widget _buildTravelSection() {
     return Column(
       children: [
-        _buildDropdownField('Customer Came From', _customerCameFromController, _cameFromOptions),
-        _buildDropdownField('Staying At', _stayingAtController, _stayingAtOptions),
+        _buildDropdownField(
+          'Customer Came From',
+          _customerCameFromController,
+          _cameFromOptions,
+        ),
+        _buildDropdownField(
+          'Staying At',
+          _stayingAtController,
+          _stayingAtOptions,
+        ),
         _buildTextField('Hotel/Place Name', _hotelNameController),
         _buildTextField('Stay Address', _stayAddressController, maxLines: 2),
         _buildTextField('Landmark', _landmarkController),
@@ -604,7 +789,11 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
             Expanded(child: _buildTextField('State', _stateController)),
           ],
         ),
-        _buildTextField('PIN Code', _pinCodeController, keyboardType: TextInputType.number),
+        _buildTextField(
+          'PIN Code',
+          _pinCodeController,
+          keyboardType: TextInputType.number,
+        ),
       ],
     );
   }
@@ -615,11 +804,19 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         Row(
           children: [
             Expanded(
-              child: _buildTextField('Start KM', _startKMController, keyboardType: TextInputType.number),
+              child: _buildTextField(
+                'Start KM',
+                _startKMController,
+                keyboardType: TextInputType.number,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _buildTextField('End KM', _endKMController, keyboardType: TextInputType.number),
+              child: _buildTextField(
+                'End KM',
+                _endKMController,
+                keyboardType: TextInputType.number,
+              ),
             ),
           ],
         ),
@@ -635,7 +832,11 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               const Text('Total Distance: ', style: TextStyle(fontSize: 16)),
               Text(
                 _calculateTotalKM(),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.ember),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.ember,
+                ),
               ),
               const Text(' KM', style: TextStyle(fontSize: 16)),
             ],
@@ -659,17 +860,114 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       children: [
         Row(
           children: [
-            Expanded(child: _buildTextField('Days', _daysController)),
+            Expanded(
+              child: _buildTextField(
+                'Days',
+                _daysController,
+                keyboardType: TextInputType.number,
+              ),
+            ),
             const SizedBox(width: 12),
-            Expanded(child: _buildTextField('Rate/Day', _rateController)),
+            Expanded(
+              child: _buildTextField(
+                'Rate/Day',
+                _rateController,
+                keyboardType: TextInputType.number,
+              ),
+            ),
           ],
         ),
-        _buildTextField('Bill Amount', _billAmountController),
+        // Read-only bill amount because it auto-calculates from Days and Rate
+        _buildReadOnlyField('Bill Amount', _billAmountController),
       ],
     );
   }
 
-  Future<void> _saveChallan() async {
+  Widget _buildQRCodeImagePreview() {
+    if (_selectedQRCodeImageUrl == null || _selectedQRCodeImageUrl!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Center(
+      child: Column(
+        children: [
+          const Text('Scan to Pay', style: TextStyle(color: AppColors.muted)),
+          const SizedBox(height: 8),
+          Container(
+            height: 150,
+            width: 150,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                _selectedQRCodeImageUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(Icons.error, color: Colors.red),
+                loadingBuilder: (_, child, progress) => progress == null ? child : const Center(child: CircularProgressIndicator()),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentMethodDropdown() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _paymentSettingsCollection.where('isActive', isEqualTo: true).snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Text('Error loading payment methods: ${snapshot.error}');
+        }
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final qrDocs = snapshot.data?.docs ?? [];
+        if (qrDocs.isEmpty) {
+          return const Text('No active payment methods found.');
+        }
+
+        // Ensure the selected value exists in the items list
+        final selectedValueExists = qrDocs.any((doc) => doc.id == _selectedQRCodeId);
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: DropdownButtonFormField<String>(
+            value: selectedValueExists ? _selectedQRCodeId : null,
+            decoration: InputDecoration(
+              labelText: 'Select QR Code',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            items: qrDocs.map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              return DropdownMenuItem<String>(
+                value: doc.id,
+                child: Text(data['name'] ?? 'Unnamed QR'),
+              );
+            }).toList(),
+            onChanged: (value) {
+              setState(() {
+                _selectedQRCodeId = value;
+                if (value == null) {
+                  _selectedQRCodeImageUrl = null;
+                } else {
+                  final selectedDoc = qrDocs.firstWhere((doc) => doc.id == value);
+                  final data = selectedDoc.data() as Map<String, dynamic>;
+                  _selectedQRCodeImageUrl = data['imageUrl'];
+                }
+              });
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _saveCustomer() async {
     if (!_formKey.currentState!.validate()) return;
     if (_vehicleNumberController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -677,7 +975,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       );
       return;
     }
-
     setState(() => _isSaving = true);
 
     try {
@@ -693,72 +990,35 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         throw Exception('Customer code could not be generated');
       }
 
-      // Update kilometer details
       final startKM = int.tryParse(_startKMController.text) ?? 0;
       final endKM = int.tryParse(_endKMController.text) ?? 0;
       if (startKM > 0 || endKM > 0) {
         _kilometerDetails = KilometerDetails(startKM: startKM, endKM: endKM);
       }
 
-      // Build the data map
-      final data = {
-        'fyear': _fyearController.text,
-        'custCode': customerCode,
-        'partyName': _partyNameController.text.trim(),
-        'sDate': _dateController.text,
-        'address': _addressController.text.trim(),
-        'smsPhone': _phoneController.text.trim(),
-        'aadharNo': _aadharController.text.trim(),
-        'licenceNo': _licenseController.text.trim(),
-        'vehicleName': _vehicleController.text.trim(),
-        'vehicleNumber': _vehicleNumberController.text.trim(),
-        'days': _daysController.text.trim(),
-        'rate': _rateController.text.trim(),
-        'billAmount': _billAmountController.text.trim(),
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-
-      // Add customer documents if available
-      if (_customerDocuments != null && !_customerDocuments!.isEmpty) {
-        data['customerDocuments'] = _customerDocuments!.toMap();
-      }
-
-      // Add vehicle handover
-      String? givenDateStr;
-      String? givenTimeStr;
-      String? returnDateStr;
-      String? returnTimeStr;
-
-      if (_vehicleGivenDate != null) {
-        givenDateStr = '${_vehicleGivenDate!.day}-${_vehicleGivenDate!.month}-${_vehicleGivenDate!.year}';
-      }
-      if (_vehicleGivenTime != null) {
-        givenTimeStr = '${_vehicleGivenTime!.hour}:${_vehicleGivenTime!.minute}';
-      }
-      if (_vehicleReturnDate != null) {
-        returnDateStr = '${_vehicleReturnDate!.day}-${_vehicleReturnDate!.month}-${_vehicleReturnDate!.year}';
-      }
-      if (_vehicleReturnTime != null) {
-        returnTimeStr = '${_vehicleReturnTime!.hour}:${_vehicleReturnTime!.minute}';
-      }
-
-      _vehicleHandover = VehicleHandover(
+      final vehicleHandover = VehicleHandover(
         vehicleName: _vehicleController.text.trim(),
         vehicleNumber: _vehicleNumberController.text.trim(),
         vehiclePickupLocation: _pickupLocationController.text.trim(),
         vehicleReturnLocation: _returnLocationController.text.trim(),
-        vehicleGivenDate: givenDateStr ?? '',
-        vehicleGivenTime: givenTimeStr ?? '',
-        vehicleReturnDate: returnDateStr ?? '',
-        vehicleReturnTime: returnTimeStr ?? '',
+        vehicleGivenDate: _vehicleGivenDate != null
+            ? '${_vehicleGivenDate!.day}-${_vehicleGivenDate!.month}-${_vehicleGivenDate!.year}'
+            : '',
+        vehicleGivenTime: _vehicleGivenTime != null
+            ? '${_vehicleGivenTime!.hour}:${_vehicleGivenTime!.minute}'
+            : '',
+        vehicleReturnDate: _vehicleReturnDate != null
+            ? '${_vehicleReturnDate!.day}-${_vehicleReturnDate!.month}-${_vehicleReturnDate!.year}'
+            : '',
+        vehicleReturnTime: _vehicleReturnTime != null
+            ? '${_vehicleReturnTime!.hour}:${_vehicleReturnTime!.minute}'
+            : '',
         vehicleCameFrom: _vehicleCameFromController.text.trim(),
         vehicleReturnedTo: _vehicleReturnedToController.text.trim(),
         returnStatus: _vehicleHandover?.returnStatus ?? 'Pending',
       );
-      data['vehicleHandover'] = _vehicleHandover!.toMap();
 
-      // Add travel details
-      _travelDetails = TravelDetails(
+      final travelDetails = TravelDetails(
         customerCameFrom: _customerCameFromController.text.trim(),
         stayingAt: _stayingAtController.text.trim(),
         hotelName: _hotelNameController.text.trim(),
@@ -768,21 +1028,34 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         state: _stateController.text.trim(),
         pinCode: _pinCodeController.text.trim(),
       );
-      data['travelDetails'] = _travelDetails!.toMap();
 
-      // Add kilometer details
-      if (_kilometerDetails != null) {
-        data['kilometerDetails'] = _kilometerDetails!.toMap();
+      final customer = Customer(
+        custCode: customerCode,
+        name: _partyNameController.text.trim(),
+        vehicleName: _vehicleController.text.trim(),
+        sDate: _dateController.text,
+        returnDate: vehicleHandover.vehicleReturnDate,
+        days: _daysController.text.trim(),
+        rate: _rateController.text.trim(),
+        billAmount: _billAmountController.text.trim(),
+        address: _addressController.text.trim(),
+        smsPhone: _phoneController.text.trim(),
+        aadharNo: _aadharController.text.trim(),
+        licenceNo: _licenseController.text.trim(),
+        fyear: _fyearController.text.trim(),
+        vehicleHandover: vehicleHandover.toMap(),
+        travelDetails: travelDetails.toMap(),
+        kilometerDetails: _kilometerDetails?.toMap(),
+        customerDocuments: _customerDocuments?.toMap(),
+        transportation: _transportation?.toMap(),
+      );
+
+      final customerData = customer.toMap();
+      if (_selectedQRCodeId != null) {
+        customerData['qrCodeId'] = _selectedQRCodeId;
       }
 
-      // Add transportation details inside the Challan document
-      if (_transportation != null && !_transportation!.isEmpty) {
-        data['transportation'] = _transportation!.toMap();
-      }
-
-      // Save to Firestore
-      await _customersCollection.doc(_custCodeController.text).set(data, SetOptions(merge: true));
-
+      await _customersCollection.doc(customerCode).set(customerData, SetOptions(merge: true));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Challan saved successfully')),
@@ -791,9 +1064,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
 

@@ -34,7 +34,7 @@ class CustomerDashboard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.ember.withValues(alpha: 0.24),
+                      color: AppColors.ember.withAlpha(60), // ~0.24 alpha
                       blurRadius: 28,
                       offset: const Offset(0, 16),
                     ),
@@ -201,8 +201,8 @@ class _VehicleCard extends StatelessWidget {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      AppColors.mint.withValues(alpha: 0.18),
-                      AppColors.sky.withValues(alpha: 0.14),
+                      AppColors.mint.withAlpha(46), // ~0.18 alpha
+                      AppColors.sky.withAlpha(35), // ~0.14 alpha
                     ],
                   ),
                   borderRadius: BorderRadius.circular(20),
@@ -236,8 +236,7 @@ class _VehicleCard extends StatelessWidget {
               ),
               Chip(
                 label: Text(vehicle.available ? 'Available' : 'Booked'),
-                backgroundColor: vehicle.available
-                    ? AppColors.mint.withValues(alpha: 0.12)
+                backgroundColor: vehicle.available ? AppColors.mint.withAlpha(30) // ~0.12 alpha
                     : Colors.red.shade50,
                 labelStyle: TextStyle(
                   color: vehicle.available

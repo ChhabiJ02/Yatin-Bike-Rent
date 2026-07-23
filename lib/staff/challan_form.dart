@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../models/customer.dart';
 import '../models/customer_documents.dart';
 import '../models/transportation_model.dart';
 import '../screens/transportation_details_screen.dart';
@@ -35,7 +36,6 @@ class ChallanEntry {
   final String extraP;
   final String helmet;
   final Transportation? transportation;
-  final CustomerDocuments? customerDocuments;
 
   ChallanEntry({
     required this.fyear,
@@ -64,11 +64,10 @@ class ChallanEntry {
     required this.extraP,
     required this.helmet,
     this.transportation,
-    this.customerDocuments,
   });
 
   Map<String, dynamic> toMap() {
-    final map = {
+    final map = <String, dynamic>{
       'fyear': fyear,
       'custCode': custCode,
       'partyName': partyName,
@@ -97,14 +96,8 @@ class ChallanEntry {
       'createdAt': FieldValue.serverTimestamp(),
     };
 
-    // Include transportation data inside the Challan document
     if (transportation != null && !transportation!.isEmpty) {
       map['transportation'] = transportation!.toMap();
-    }
-
-    // Include customer documents
-    if (customerDocuments != null && !customerDocuments!.isEmpty) {
-      map['customerDocuments'] = customerDocuments!.toMap();
     }
 
     return map;
@@ -112,8 +105,13 @@ class ChallanEntry {
 }
 
 class ChallanForm {
-  static final CollectionReference<Map<String, dynamic>> _customersCollection =
-      FirebaseFirestore.instance.collection('customers');
+  static final CollectionReference<Customer> _customersCollection =
+      FirebaseFirestore.instance.collection('customers').withConverter<Customer>(
+            fromFirestore: (snapshot, _) => Customer.fromFirestore(snapshot),
+            toFirestore: (customer, _) => customer?.toMap() ?? {},
+          );
+
+  static CollectionReference<Customer> get customersCollection => _customersCollection;
 
   static Future<bool> show(BuildContext context) async {
     final result = await showModalBottomSheet<bool>(
@@ -121,7 +119,7 @@ class ChallanForm {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return _ChallanFormWidget();
+        return const _ChallanFormWidget();
       },
     );
     return result ?? false;
@@ -130,6 +128,7 @@ class ChallanForm {
   static Future<bool> showForEdit(
     BuildContext context, {
     required String custCode,
+    required String sDate,
     required String partyName,
     required String address,
     required String address2,
@@ -153,6 +152,7 @@ class ChallanForm {
     required String extraP,
     required String helmet,
     Transportation? transportation,
+    CustomerDocuments? customerDocuments,
   }) async {
     final result = await showModalBottomSheet<bool>(
       context: context,
@@ -161,6 +161,7 @@ class ChallanForm {
       builder: (context) {
         return _ChallanFormWidget.forEdit(
           custCode: custCode,
+          sDate: sDate,
           partyName: partyName,
           address: address,
           address2: address2,
@@ -184,6 +185,7 @@ class ChallanForm {
           extraP: extraP,
           helmet: helmet,
           transportation: transportation,
+          customerDocuments: customerDocuments,
         );
       },
     );
@@ -191,38 +193,38 @@ class ChallanForm {
   }
 }
 
-// ignore: must_be_immutable
 class _ChallanFormWidget extends StatefulWidget {
-  String? custCode;
-  String? partyName;
-  String? address;
-  String? address2;
-  String? landmark;
-  String? area;
-  String? city;
-  String? pincode;
-  String? smsPhone;
-  String? reference;
-  String? aadharNo;
-  String? licenceNo;
-  String? remark;
-  String? fineRs;
-  String? returnDate;
-  String? vehicleName;
-  String? days;
-  String? rate;
-  String? billAmount;
-  String? pickupRs;
-  String? dropRs;
-  String? extraP;
-  String? helmet;
-  Transportation? transportation;
-  CustomerDocuments? customerDocuments;
+  final String? custCode;
+  final String? sDate;
+  final String? partyName;
+  final String? address;
+  final String? address2;
+  final String? landmark;
+  final String? area;
+  final String? city;
+  final String? pincode;
+  final String? smsPhone;
+  final String? reference;
+  final String? aadharNo;
+  final String? licenceNo;
+  final String? remark;
+  final String? fineRs;
+  final String? returnDate;
+  final String? vehicleName;
+  final String? days;
+  final String? rate;
+  final String? billAmount;
+  final String? pickupRs;
+  final String? dropRs;
+  final String? extraP;
+  final String? helmet;
+  final Transportation? transportation;
+  final CustomerDocuments? customerDocuments;
 
-  _ChallanFormWidget();
-
-  _ChallanFormWidget.forEdit({
+  // Default Constructor initializing optional parameters
+  const _ChallanFormWidget({
     this.custCode,
+    this.sDate,
     this.partyName,
     this.address,
     this.address2,
@@ -246,7 +248,38 @@ class _ChallanFormWidget extends StatefulWidget {
     this.extraP,
     this.helmet,
     this.transportation,
-  }) : customerDocuments = null;
+    this.customerDocuments,
+  });
+
+  // Named Constructor for Editing
+  const _ChallanFormWidget.forEdit({
+    required this.custCode,
+    required this.sDate,
+    required this.partyName,
+    required this.address,
+    required this.address2,
+    required this.landmark,
+    required this.area,
+    required this.city,
+    required this.pincode,
+    required this.smsPhone,
+    required this.reference,
+    required this.aadharNo,
+    required this.licenceNo,
+    required this.remark,
+    required this.fineRs,
+    required this.returnDate,
+    required this.vehicleName,
+    required this.days,
+    required this.rate,
+    required this.billAmount,
+    required this.pickupRs,
+    required this.dropRs,
+    required this.extraP,
+    required this.helmet,
+    this.transportation,
+    this.customerDocuments,
+  });
 
   @override
   State<_ChallanFormWidget> createState() => _ChallanFormWidgetState();
@@ -281,7 +314,6 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
   final extraController = TextEditingController();
   final helmetController = TextEditingController();
 
-  // Transportation data stored in memory
   Transportation? _transportationData;
   CustomerDocuments? _customerDocuments;
   bool _isEditMode = false;
@@ -290,14 +322,12 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
   void initState() {
     super.initState();
 
-    // Check if in edit mode
     _isEditMode = widget.custCode != null && widget.custCode!.isNotEmpty;
 
     if (_isEditMode) {
-      // Populate fields for edit mode
       customerCodeController.text = widget.custCode ?? '';
-      fyearController.text = _currentFinancialYear();
-      dateController.text = _formatChallanDateTime(DateTime.now());
+      fyearController.text = widget.custCode?.split('/')[0] ?? _currentFinancialYear();
+      dateController.text = widget.sDate ?? _formatChallanDateTime(DateTime.now());
       partyNameController.text = widget.partyName ?? '';
       addressController.text = widget.address ?? '';
       address2Controller.text = widget.address2 ?? '';
@@ -321,8 +351,8 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
       extraController.text = widget.extraP ?? '';
       helmetController.text = widget.helmet ?? '';
       _transportationData = widget.transportation;
+      _customerDocuments = widget.customerDocuments;
     } else {
-      // New entry mode
       final fyear = _currentFinancialYear();
       fyearController.text = fyear;
       dateController.text = _formatChallanDateTime(DateTime.now());
@@ -367,9 +397,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
   }
 
   Future<void> _generateCustomerCode(String fyear) async {
-    if (_isEditMode) {
-      return;
-    }
+    if (_isEditMode) return;
 
     try {
       final nextCode = await ChallanService.generateCustomerCodeForFinancialYear(fyear);
@@ -451,7 +479,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
         FormImagePicker(
           label: 'Aadhaar Front',
           imageUrl: _customerDocuments?.aadhaarFront,
-          folder: 'documents/${customerCodeController.text}/aadhaar',
+          folder: 'aadhaar',
           isRequired: true,
           onImageSelected: (url) {
             setState(() {
@@ -463,7 +491,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
         FormImagePicker(
           label: 'Aadhaar Back',
           imageUrl: _customerDocuments?.aadhaarBack,
-          folder: 'documents/${customerCodeController.text}/aadhaar',
+          folder: 'aadhaar',
           isRequired: true,
           onImageSelected: (url) {
             setState(() {
@@ -475,7 +503,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
         FormImagePicker(
           label: 'License Front',
           imageUrl: _customerDocuments?.licenseFront,
-          folder: 'documents/${customerCodeController.text}/license',
+          folder: 'license',
           isRequired: true,
           onImageSelected: (url) {
             setState(() {
@@ -487,7 +515,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
         FormImagePicker(
           label: 'License Back',
           imageUrl: _customerDocuments?.licenseBack,
-          folder: 'documents/${customerCodeController.text}/license',
+          folder: 'license',
           isRequired: true,
           onImageSelected: (url) {
             setState(() {
@@ -499,7 +527,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
         FormImagePicker(
           label: 'Customer with Vehicle',
           imageUrl: _customerDocuments?.customerVehiclePhoto,
-          folder: 'documents/${customerCodeController.text}/vehicle',
+          folder: 'vehicle',
           isRequired: true,
           onImageSelected: (url) {
             setState(() {
@@ -511,7 +539,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
         FormImagePicker(
           label: 'Travel Ticket (Optional)',
           imageUrl: _customerDocuments?.travelTicketPhoto,
-          folder: 'documents/${customerCodeController.text}/travel',
+          folder: 'travel',
           onImageSelected: (url) {
             setState(() {
               _customerDocuments = (_customerDocuments ?? CustomerDocuments())
@@ -525,19 +553,29 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
 
   Future<void> _saveChallanEntry(ChallanEntry entry) async {
     try {
-      final data = entry.toMap();
-      debugPrint('Saving Challan with transportation: ${entry.transportation?.toMap()}');
-
-      // Save only to customers collection
-      await ChallanForm._customersCollection.doc(entry.custCode).set(data);
+      await ChallanService.saveChallanWithTransaction(
+        custCode: entry.custCode,
+        customerData: entry.toMap(),
+        transportation: entry.transportation?.toMap(),
+        documents: _customerDocuments?.toMap(),
+      );
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Challan saved successfully.')),
+        const SnackBar(
+          content: Text('Challan saved successfully.'),
+          backgroundColor: Colors.green,
+        ),
       );
     } catch (e) {
       debugPrint('Error saving Challan: $e');
       if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save Challan: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
       rethrow;
     }
   }
@@ -609,7 +647,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                                   _isEditMode
                                       ? 'Update customer and booking details.'
                                       : 'Fill in customer and booking details.',
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     color: Colors.white,
                                     height: 1.35,
                                   ),
@@ -634,7 +672,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                       onTap: () async {
                         final currentDateTime =
                             _parseChallanDateTime(dateController.text) ??
-                            DateTime.now();
+                                DateTime.now();
                         final picked = await showDatePicker(
                           context: context,
                           initialDate: currentDateTime,
@@ -645,13 +683,10 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                           if (!context.mounted) return;
                           final pickedTime = await showTimePicker(
                             context: context,
-                            initialTime: TimeOfDay.fromDateTime(
-                              currentDateTime,
-                            ),
+                            initialTime: TimeOfDay.fromDateTime(currentDateTime),
                           );
                           final time =
-                              pickedTime ??
-                              TimeOfDay.fromDateTime(currentDateTime);
+                              pickedTime ?? TimeOfDay.fromDateTime(currentDateTime);
                           dateController.text = _formatChallanDateTime(
                             DateTime(
                               picked.year,
@@ -772,7 +807,9 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                       children: [
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            initialValue: vehicleController.text.isEmpty ? null : vehicleController.text,
+                            initialValue: vehicleController.text.isEmpty
+                                ? null
+                                : vehicleController.text,
                             decoration: InputDecoration(
                               labelText: 'Vehicle Name',
                               border: OutlineInputBorder(
@@ -826,10 +863,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                     Row(
                       children: [
                         Expanded(
-                          child: _buildTextField(
-                            'Pickup Rs.',
-                            pickupController,
-                          ),
+                          child: _buildTextField('Pickup Rs.', pickupController),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -852,10 +886,14 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                     const SizedBox(height: 24),
                     ElevatedButton(
                       onPressed: () async {
-                        if (!(_formKey.currentState?.validate() ?? false)) {
+                        if (!(_formKey.currentState?.validate() ?? false) ||
+                            !(_customerDocuments?.isComplete ?? false)) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Please fill all required fields'),
+                            SnackBar(
+                              content: Text(!(_customerDocuments?.isComplete ?? false)
+                                  ? 'Please upload all required customer documents.'
+                                  : 'Please fill all required fields.'),
+                              backgroundColor: Colors.orange.shade700,
                             ),
                           );
                           return;
@@ -890,15 +928,12 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                             extraP: extraController.text.trim(),
                             helmet: helmetController.text.trim(),
                             transportation: _transportationData,
-                            customerDocuments: _customerDocuments,
                           );
 
                           await _saveChallanEntry(entry);
-                          if (!mounted) return;
                           navigator.pop(true);
                         } catch (e) {
                           if (!mounted) return;
-                          // ignore: use_build_context_synchronously
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text('Error saving: $e')),
                           );
@@ -944,13 +979,21 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.local_shipping, size: 20, color: AppColors.ember),
+                          const Icon(
+                            Icons.local_shipping,
+                            size: 20,
+                            color: AppColors.ember,
+                          ),
                           const SizedBox(width: 8),
                           Text(
-                            _transportationData != null && !_transportationData!.isEmpty
+                            _transportationData != null &&
+                                    !_transportationData!.isEmpty
                                 ? 'Transportation Details (Added)'
                                 : 'Transportation Details',
-                            style: TextStyle(fontSize: 16, color: AppColors.ember),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: AppColors.ember,
+                            ),
                           ),
                         ],
                       ),

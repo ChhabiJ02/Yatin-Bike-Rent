@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-
-import '../models/booking.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../models/customer.dart';
 import '../services/rental_service.dart';
 import '../widgets/user_app_bar_title.dart';
 import '../theme/app_theme.dart';
@@ -18,11 +18,19 @@ class StaffDashboard extends StatefulWidget {
 }
 
 class _StaffDashboardState extends State<StaffDashboard> {
-  final _customersCollection = FirebaseFirestore.instance.collection('customers');
+  final _customersCollection = FirebaseFirestore.instance
+      .collection('customers')
+      .withConverter<Customer>(
+        fromFirestore: (snapshots, _) => Customer.fromFirestore(snapshots),
+        toFirestore: (customer, _) => customer.toMap(),
+      );
   String _returnFilter = 'All';
 
   void _openEntryForm() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const ChallanEntryScreen()));
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ChallanEntryScreen()),
+    );
   }
 
   Future<void> _updateReturnStatus(String custCode, String status) async {
@@ -32,10 +40,16 @@ class _StaffDashboardState extends State<StaffDashboard> {
         title: Text('Mark as $status?'),
         content: Text('This will update the vehicle return status to $status.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(status, style: const TextStyle(fontWeight: FontWeight.bold)),
+            child: Text(
+              status,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -45,13 +59,13 @@ class _StaffDashboardState extends State<StaffDashboard> {
       final doc = await docRef.get();
       if (doc.exists) {
         final data = doc.data()!;
-        final handover = Map<String, dynamic>.from(data['vehicleHandover'] ?? {});
+        final handover = data.vehicleHandover ?? {};
         handover['returnStatus'] = status;
         await docRef.update({'vehicleHandover': handover});
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Vehicle marked as $status')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Vehicle marked as $status')));
         }
       }
     }
@@ -61,303 +75,94 @@ class _StaffDashboardState extends State<StaffDashboard> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
+      backgroundColor: AppColors.navy,
       appBar: AppBar(
         foregroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         title: const UserAppBarTitle(fallbackTitle: 'Staff'),
-        actions: const [
-          AppSettingsMenu(),
-        ],
+        actions: const [AppSettingsMenu()],
       ),
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.pageGradient),
-        child: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-            children: [
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: AppColors.heroGradient,
-                  borderRadius: BorderRadius.circular(28),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.ember.withValues(alpha: 0.24),
-                      blurRadius: 28,
-                      offset: const Offset(0, 16),
-                    ),
-                  ],
-                ),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.assignment_turned_in,
-                      color: Colors.white,
-                      size: 42,
-                    ),
-                    SizedBox(height: 18),
-                    Text(
-                      'Booking Control Desk',
-                      style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
+      body: SafeArea(
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 24),
+                  decoration: BoxDecoration(
+                    gradient: AppColors.heroGradient,
+                    borderRadius: BorderRadius.circular(28),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.ember.withAlpha(60),
+                        blurRadius: 28,
+                        offset: const Offset(0, 16),
+                      ),
+                    ],
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.assignment_turned_in,
                         color: Colors.white,
+                        size: 42,
                       ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'Track customer reservations and update status quickly.',
-                      style: TextStyle(color: Colors.white, height: 1.5),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: AppTheme.softCard(),
-                      child: StreamBuilder(
-                        stream: RentalService.bookingsStream(),
-                        builder: (context, snapshot) {
-                          final docs = snapshot.data?.docs ?? [];
-                          final open = docs.where((d) => (d.data()['status'] as String?) == 'Pending').length;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.pending_actions, color: AppColors.amber, size: 24),
-                              const SizedBox(height: 10),
-                              Text('$open', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
-                              const SizedBox(height: 4),
-                              const Text('Open', style: TextStyle(color: AppColors.muted, fontSize: 12)),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: AppTheme.softCard(),
-                      child: StreamBuilder(
-                        stream: RentalService.bookingsStream(),
-                        builder: (context, snapshot) {
-                          final docs = snapshot.data?.docs ?? [];
-                          final confirmed = docs.where((d) => (d.data()['status'] as String?) == 'Confirmed').length;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.verified, color: AppColors.mint, size: 24),
-                              const SizedBox(height: 10),
-                              Text('$confirmed', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
-                              const SizedBox(height: 4),
-                              const Text('Confirmed', style: TextStyle(color: AppColors.muted, fontSize: 12)),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: AppTheme.softCard(),
-                      child: StreamBuilder(
-                        stream: RentalService.bookingsStream(),
-                        builder: (context, snapshot) {
-                          final docs = snapshot.data?.docs ?? [];
-                          final checkedIn = docs.where((d) => (d.data()['status'] as String?) == 'Checked In').length;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.login, color: AppColors.sky, size: 24),
-                              const SizedBox(height: 10),
-                              Text('$checkedIn', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
-                              const SizedBox(height: 4),
-                              const Text('Checked In', style: TextStyle(color: AppColors.muted, fontSize: 12)),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: AppTheme.softCard(),
-                      child: StreamBuilder(
-                        stream: _customersCollection.snapshots(),
-                        builder: (context, snapshot) {
-                          final docs = snapshot.data?.docs ?? [];
-                          final pending = docs.where((d) {
-                            final handover = d.data()['vehicleHandover'] as Map<String, dynamic>?;
-                            return (handover?['returnStatus'] as String?) != 'Returned';
-                          }).length;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.schedule, color: AppColors.amber, size: 24),
-                              const SizedBox(height: 10),
-                              Text('$pending', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
-                              const SizedBox(height: 4),
-                              const Text('Return Pending', style: TextStyle(color: AppColors.muted, fontSize: 12)),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: AppTheme.softCard(),
-                      child: StreamBuilder(
-                        stream: _customersCollection.snapshots(),
-                        builder: (context, snapshot) {
-                          final docs = snapshot.data?.docs ?? [];
-                          final returnedToday = docs.where((d) {
-                            final handover = d.data()['vehicleHandover'] as Map<String, dynamic>?;
-                            return (handover?['returnStatus'] as String?) == 'Returned';
-                          }).length;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.check_circle, color: AppColors.mint, size: 24),
-                              const SizedBox(height: 10),
-                              Text('$returnedToday', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
-                              const SizedBox(height: 4),
-                              const Text('Total Returned', style: TextStyle(color: AppColors.muted, fontSize: 12)),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  _FilterChip(label: 'All', isSelected: _returnFilter == 'All', onTap: () => setState(() => _returnFilter = 'All')),
-                  const SizedBox(width: 8),
-                  _FilterChip(label: 'Return Pending', isSelected: _returnFilter == 'Pending', onTap: () => setState(() => _returnFilter = 'Pending')),
-                  const SizedBox(width: 8),
-                  _FilterChip(label: 'Returned', isSelected: _returnFilter == 'Returned', onTap: () => setState(() => _returnFilter = 'Returned')),
-                ],
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Customer Entries',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                ),
-              ),
-              StreamBuilder(
-                stream: _customersCollection.orderBy('sDate', descending: true).snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: Padding(padding: EdgeInsets.all(12), child: SizedBox(height:24,width:24,child:CircularProgressIndicator(strokeWidth:2.5))));
-                  }
-                  var docs = snapshot.data?.docs ?? [];
-                  if (docs.isEmpty) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      child: Text('No customer entries available.', style: TextStyle(color: AppColors.muted)),
-                    );
-                  }
-                  if (_returnFilter != 'All') {
-                    docs = docs.where((d) {
-                      final handover = d.data()['vehicleHandover'] as Map<String, dynamic>?;
-                      final status = (handover?['returnStatus'] as String?) ?? 'Pending';
-                      if (_returnFilter == 'Pending') return status != 'Returned';
-                      if (_returnFilter == 'Returned') return status == 'Returned';
-                      return true;
-                    }).toList();
-                  }
-                  return Column(
-                    children: docs.map((doc) {
-                      final data = doc.data();
-                      final handover = data['vehicleHandover'] as Map<String, dynamic>?;
-                      final returnStatus = handover?['returnStatus'] as String? ?? 'Pending';
-                      return _CustomerEntryCard(
-                        custCode: doc.id,
-                        partyName: data['partyName'] ?? '',
-                        vehicleName: data['vehicleName'] ?? '',
-                        sDate: data['sDate'] ?? '',
-                        returnDate: data['returnDate'] ?? '',
-                        days: data['days'] ?? '',
-                        rate: data['rate'] ?? '',
-                        billAmount: data['billAmount'] ?? '',
-                        returnStatus: returnStatus,
-                        onStatusChange: _updateReturnStatus,
-                      );
-                    }).toList(),
-                  );
-                },
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Recent Bookings',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                ),
-              ),
-              StreamBuilder(
-                stream: RentalService.bookingsStream(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: Padding(padding: EdgeInsets.all(12), child: SizedBox(height:24,width:24,child:CircularProgressIndicator(strokeWidth:2.5))));
-                  }
-                  final docs = snapshot.data?.docs ?? [];
-                  if (docs.isEmpty) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      child: Text('No bookings available.', style: TextStyle(color: AppColors.muted)),
-                    );
-                  }
-                  return Column(
-                    children: docs.map((doc) {
-                      final data = doc.data();
-                      final customerName = (data['customerName'] as String?) ?? (data['customer'] as String?) ?? 'Customer';
-                      final vehicleName = (data['vehicleName'] as String?) ?? 'Vehicle';
-                      final start = data['startAt'] is Timestamp ? (data['startAt'] as Timestamp).toDate() : null;
-                      final end = data['endAt'] is Timestamp ? (data['endAt'] as Timestamp).toDate() : null;
-                      final period = start != null && end != null ? '${start.day}-${start.month} - ${end.day}-${end.month}' : (data['rentalPeriod'] as String?) ?? '';
-                      final status = (data['status'] as String?) ?? 'Pending';
-                      final total = ((data['totalAmount'] as num?)?.toInt() ?? 0).toString();
-
-                      return _BookingCard(
-                        booking: Booking(
-                          id: doc.id,
-                          customerName: customerName,
-                          vehicleName: vehicleName,
-                          rentalPeriod: period,
-                          status: status,
-                          totalAmount: int.tryParse(total) ?? 0,
+                      SizedBox(height: 18),
+                      Text(
+                        'Booking Control Desk',
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
                         ),
-                      );
-                    }).toList(),
-                  );
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Track customer reservations and update status quickly.',
+                        style: TextStyle(color: Colors.white, height: 1.5),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18.0),
+                child: _buildStatsCards(),
+              ),
+            ),
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _FilterHeaderDelegate(
+                selectedFilter: _returnFilter,
+                onFilterChanged: (newFilter) {
+                  setState(() => _returnFilter = newFilter);
                 },
               ),
-              const SizedBox(height: 92),
-            ],
-          ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 32),
+              sliver: SliverToBoxAdapter(
+                child: _returnFilter == 'Recent Bookings'
+                    ? StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        stream: RentalService.bookingsStream(),
+                        builder: (context, snapshot) {
+                          return _buildBookingListContent(context, snapshot);
+                        },
+                      )
+                    : StreamBuilder<QuerySnapshot<Customer>>(
+                        stream: _getCustomersQuery().snapshots(),
+                        builder: (context, snapshot) {
+                          return _buildCustomerListContent(context, snapshot);
+                        },
+                      ),
+              ),
+            ),
+          ],
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -369,152 +174,524 @@ class _StaffDashboardState extends State<StaffDashboard> {
       ),
     );
   }
+
+  Query<Customer> _getCustomersQuery() {
+    Query<Customer> query = _customersCollection.orderBy(
+      'sDate',
+      descending: true,
+    );
+    if (_returnFilter == 'Returned') {
+      query = query.where(
+        'vehicleHandover.returnStatus',
+        isEqualTo: 'Returned',
+      );
+    }
+    return query;
+  }
+
+  Widget _buildBookingListContent(
+    BuildContext context,
+    AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> snapshot,
+  ) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: CircularProgressIndicator(strokeWidth: 2.5),
+        ),
+      );
+    }
+    final docs = snapshot.data?.docs ?? [];
+    if (docs.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: Text(
+            'No recent bookings available.',
+            style: TextStyle(color: AppColors.muted),
+          ),
+        ),
+      );
+    }
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: docs.length,
+      itemBuilder: (context, index) {
+        final doc = docs[index];
+        return Card(
+          child: ListTile(
+            title: Text(doc.data()['customerName'] ?? 'Booking'),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCustomerListContent(
+    BuildContext context,
+    AsyncSnapshot<QuerySnapshot<Customer>> snapshot,
+  ) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: CircularProgressIndicator(strokeWidth: 2.5),
+        ),
+      );
+    }
+    if (snapshot.hasError) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: Text(
+            'Error: ${snapshot.error}',
+            style: const TextStyle(color: Colors.red),
+          ),
+        ),
+      );
+    }
+
+    var docs = snapshot.data?.docs ?? [];
+    if (docs.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: Text(
+            'No customer entries available.',
+            style: TextStyle(color: AppColors.muted),
+          ),
+        ),
+      );
+    }
+
+    if (_returnFilter == 'Pending') {
+      docs = docs.where((doc) {
+        final customer = doc.data();
+        return customer.vehicleHandover?['returnStatus'] != 'Returned';
+      }).toList();
+    }
+
+    if (docs.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: Text(
+            'No pending customer entries found.',
+            style: TextStyle(color: AppColors.muted),
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: docs.length,
+      itemBuilder: (context, index) {
+        final customer = docs[index].data();
+        return _CustomerEntryCard(
+          customer: customer,
+          onStatusChange: _updateReturnStatus,
+        );
+      },
+    );
+  }
+
+  Widget _buildStatsCards() {
+    return StreamBuilder<QuerySnapshot<Customer>>(
+      stream: _customersCollection.snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const SizedBox(height: 80);
+        }
+        final customerDocs = snapshot.data!.docs;
+
+        final pendingReturns = customerDocs.where((d) {
+          final handover = d.data().vehicleHandover;
+          return handover?['returnStatus'] != 'Returned';
+        }).length;
+        final totalReturned = customerDocs.length - pendingReturns;
+
+        return Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                count: pendingReturns,
+                label: 'Return Pending',
+                icon: Icons.schedule,
+                color: AppColors.amber,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _StatCard(
+                count: totalReturned,
+                label: 'Total Returned',
+                icon: Icons.check_circle,
+                color: AppColors.mint,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
-class _CustomerEntryCard extends StatelessWidget {
-  final String custCode;
-  final String partyName;
-  final String vehicleName;
-  final String sDate;
-  final String returnDate;
-  final String days;
-  final String rate;
-  final String billAmount;
-  final String returnStatus;
-  final Function(String custCode, String status)? onStatusChange;
+class _FilterHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final String selectedFilter;
+  final ValueChanged<String> onFilterChanged;
 
-  const _CustomerEntryCard({
-    required this.custCode,
-    required this.partyName,
-    required this.vehicleName,
-    required this.sDate,
-    required this.returnDate,
-    required this.days,
-    required this.rate,
-    required this.billAmount,
-    this.returnStatus = 'Pending',
-    this.onStatusChange,
+  _FilterHeaderDelegate({
+    required this.selectedFilter,
+    required this.onFilterChanged,
   });
 
   @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: AppColors.navy,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _FilterChip(
+                  label: 'All',
+                  isSelected: selectedFilter == 'All',
+                  onTap: () => onFilterChanged('All'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: 'Return Pending',
+                  isSelected: selectedFilter == 'Pending',
+                  onTap: () => onFilterChanged('Pending'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: 'Returned',
+                  isSelected: selectedFilter == 'Returned',
+                  onTap: () => onFilterChanged('Returned'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: 'Recent Bookings',
+                  isSelected: selectedFilter == 'Recent Bookings',
+                  onTap: () => onFilterChanged('Recent Bookings'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            selectedFilter == 'Recent Bookings' ? 'Recent Bookings' : 'Customer Entries',
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  double get maxExtent => 100;
+
+  @override
+  double get minExtent => 100;
+
+  @override
+  bool shouldRebuild(covariant _FilterHeaderDelegate oldDelegate) {
+    return selectedFilter != oldDelegate.selectedFilter;
+  }
+}
+
+class _CustomerEntryCard extends StatelessWidget {
+  final Customer customer;
+  final Function(String custCode, String status)? onStatusChange;
+
+  const _CustomerEntryCard({required this.customer, this.onStatusChange});
+
+  @override
   Widget build(BuildContext context) {
+    final returnStatus = customer.vehicleHandover?['returnStatus'] ?? 'Pending';
+    final isReturned = returnStatus == 'Returned';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: AppTheme.softCard(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header Row
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               CircleAvatar(
-                radius: 25,
-                backgroundColor: AppColors.ember.withValues(alpha: 0.16),
-                child: const Icon(Icons.person, color: AppColors.ember),
+                radius: 20,
+                backgroundColor: AppColors.ember.withAlpha(25),
+                child: const Icon(Icons.person, color: AppColors.ember, size: 22),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      partyName.isNotEmpty ? partyName : 'Customer',
+                      customer.name.isNotEmpty ? customer.name : 'Customer',
                       style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
                         color: AppColors.ink,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
-                      'Code: $custCode',
-                      style: const TextStyle(color: AppColors.muted),
+                      'Code: ${customer.custCode}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.muted,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-              Chip(
-                label: Text(vehicleName.isNotEmpty ? vehicleName : 'Vehicle'),
-                backgroundColor: AppColors.ember.withValues(alpha: 0.12),
-                labelStyle: const TextStyle(
-                  color: AppColors.ember,
-                  fontWeight: FontWeight.w800,
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.amber.withAlpha(25),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  customer.vehicleName.isNotEmpty ? customer.vehicleName : 'Vehicle',
+                  style: const TextStyle(
+                    color: AppColors.ember,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               _ReturnStatusBadge(status: returnStatus),
             ],
           ),
-          const SizedBox(height: 16),
+
+          const SizedBox(height: 14),
+
+          // Dates & Days Row
           Row(
             children: [
-              const Icon(Icons.calendar_month, size: 18, color: AppColors.muted),
+              const Icon(Icons.calendar_today, size: 15, color: AppColors.muted),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  customer.returnDate.isNotEmpty
+                      ? '${customer.sDate} - ${customer.returnDate}'
+                      : customer.sDate,
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               const SizedBox(width: 8),
-              Text('$sDate - $returnDate', style: const TextStyle(color: AppColors.muted)),
-              const SizedBox(width: 16),
-              const Icon(Icons.timer, size: 18, color: AppColors.muted),
-              const SizedBox(width: 8),
-              Text('$days days', style: const TextStyle(color: AppColors.muted)),
+              const Icon(Icons.access_time_filled, size: 15, color: AppColors.muted),
+              const SizedBox(width: 4),
+              Text(
+                '${customer.days.isNotEmpty ? customer.days : "0"} days',
+                style: const TextStyle(
+                  color: AppColors.ink,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           ),
+
           const SizedBox(height: 10),
+
+          // Amount & Rate Row
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Icon(Icons.currency_rupee, size: 18, color: AppColors.muted),
-              const SizedBox(width: 8),
-              Text(billAmount.isNotEmpty ? billAmount : '0', style: const TextStyle(color: AppColors.muted)),
-              const SizedBox(width: 16),
-              const Text('Rate: ', style: TextStyle(color: AppColors.muted)),
-              Text(rate.isNotEmpty ? rate : '0', style: const TextStyle(color: AppColors.muted)),
+              Row(
+                children: [
+                  const Text(
+                    '₹ ',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                  Text(
+                    customer.billAmount.isNotEmpty ? customer.billAmount : "0",
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                'Rate: ₹${customer.rate.isNotEmpty ? customer.rate : "0"}',
+                style: const TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 16),
+
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: Color(0xFFEEEEEE)),
+          const SizedBox(height: 8),
+
+          // Action Buttons
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               TextButton(
                 onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => ChallanEntryScreen(custCode: custCode),
-                  ));
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ChallanEntryScreen(custCode: customer.custCode),
+                    ),
+                  );
                 },
-                child: const Text('Edit'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text(
+                  'Edit',
+                  style: TextStyle(color: AppColors.ember, fontWeight: FontWeight.bold),
+                ),
               ),
               const SizedBox(width: 8),
               TextButton(
                 onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => InvoicePreviewScreen(custCode: custCode),
-                  ));
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => InvoicePreviewScreen(custCode: customer.custCode),
+                    ),
+                  );
                 },
-                child: const Text('Invoice'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text(
+                  'Invoice',
+                  style: TextStyle(color: AppColors.ember, fontWeight: FontWeight.bold),
+                ),
               ),
-              if (returnStatus != 'Returned') ...[
-                const SizedBox(width: 8),
+              const SizedBox(width: 8),
+              if (!isReturned)
                 TextButton(
                   onPressed: () {
                     if (onStatusChange != null) {
-                      onStatusChange!(custCode, 'Returned');
+                      onStatusChange!(customer.custCode, 'Returned');
                     }
                   },
-                  child: const Text('Mark Returned'),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    'Mark Returned',
+                    style: TextStyle(color: AppColors.ember, fontWeight: FontWeight.bold),
+                  ),
                 ),
-              ],
-              const SizedBox(width: 8),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => PaymentRecordScreen(custCode: custCode),
-                  ));
-                },
-                icon: const Icon(Icons.currency_rupee, size: 18),
-                label: const Text('Payment'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.mint,
-                  foregroundColor: Colors.white,
+              if (isReturned)
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => PaymentRecordScreen(custCode: customer.custCode),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.currency_rupee, size: 14),
+                  label: const Text('Payment', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.mint,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
                 ),
-              ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  final int count;
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  const _StatCard({
+    required this.count,
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: AppTheme.softCard(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 10),
+          Text(
+            '$count',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: AppColors.ink,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(color: AppColors.muted, fontSize: 12),
           ),
         ],
       ),
@@ -535,26 +712,26 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.ember : Colors.white.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? AppColors.ember : Colors.white.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? Colors.white : AppColors.muted,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            fontSize: 13,
-          ),
+    return ChoiceChip(
+      label: Text(
+        label,
+        style: TextStyle(
+          color: isSelected ? Colors.white : Colors.black,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+          fontSize: 13,
         ),
       ),
+      selected: isSelected,
+      selectedColor: AppColors.ember,
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: isSelected ? AppColors.ember : Colors.white.withAlpha(200),
+        ),
+      ),
+      showCheckmark: false,
+      onSelected: (_) => onTap(),
     );
   }
 }
@@ -575,128 +752,23 @@ class _ReturnStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: _badgeColor.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(12),
+        color: _badgeColor.withAlpha(30),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(_icon, size: 14, color: _badgeColor),
+          Icon(_icon, size: 12, color: _badgeColor),
           const SizedBox(width: 4),
           Text(
             status,
             style: TextStyle(
               color: _badgeColor,
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              fontSize: 11,
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BookingCard extends StatelessWidget {
-  final Booking booking;
-
-  const _BookingCard({required this.booking});
-
-  Color get _statusColor {
-    if (booking.status == 'Pending') return AppColors.amber;
-    if (booking.status == 'Confirmed') return AppColors.mint;
-    return AppColors.sky;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final statusColor = _statusColor;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(18),
-      decoration: AppTheme.softCard(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 25,
-                backgroundColor: statusColor.withValues(alpha: 0.16),
-                child: Icon(Icons.person, color: statusColor),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      booking.customerName,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.ink,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      booking.vehicleName,
-                      style: const TextStyle(color: AppColors.muted),
-                    ),
-                  ],
-                ),
-              ),
-              Chip(
-                label: Text(booking.status),
-                backgroundColor: statusColor.withValues(alpha: 0.12),
-                labelStyle: TextStyle(
-                  color: statusColor,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              const Icon(
-                Icons.calendar_month,
-                size: 18,
-                color: AppColors.muted,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                booking.rentalPeriod,
-                style: const TextStyle(color: AppColors.muted),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              const Icon(
-                Icons.currency_rupee,
-                size: 18,
-                color: AppColors.muted,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '${booking.totalAmount}',
-                style: const TextStyle(color: AppColors.muted),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(onPressed: () {}, child: const Text('Details')),
-              const SizedBox(width: 8),
-              ElevatedButton(onPressed: () {}, child: const Text('Update')),
-            ],
           ),
         ],
       ),

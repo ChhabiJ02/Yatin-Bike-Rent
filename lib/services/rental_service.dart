@@ -68,6 +68,30 @@ class RentalService {
     });
   }
 
+  static Future<void> updateVehicle({
+    required String vehicleId,
+    required String name,
+    required String number,
+    required String type,
+    required int hourlyRate,
+    required int dailyRate,
+    required String fuelType,
+  }) async {
+    await _db.collection('vehicles').doc(vehicleId).update({
+      'name': name,
+      'number': number,
+      'type': type,
+      'hourlyRate': hourlyRate,
+      'dailyRate': dailyRate,
+      'fuelType': fuelType,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  static Future<void> deleteVehicle(String vehicleId) async {
+    await _db.collection('vehicles').doc(vehicleId).delete();
+  }
+
   static Future<void> updateVehicleAvailability({
     required String vehicleId,
     required bool available,

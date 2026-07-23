@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class QRCodePayment {
   final String id;
   final String name;
@@ -7,7 +9,7 @@ class QRCodePayment {
   final bool isActive;
 
   QRCodePayment({
-    this.id = '',
+    required this.id,
     this.name = '',
     this.imageUrl = '',
     this.upiId = '',
@@ -35,7 +37,7 @@ class QRCodePayment {
 
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
+      // The document ID is used as the 'id', so we don't need to store it in the document fields.
       'name': name,
       'imageUrl': imageUrl,
       'upiId': upiId,
@@ -46,12 +48,26 @@ class QRCodePayment {
 
   factory QRCodePayment.fromMap(Map<String, dynamic> map) {
     return QRCodePayment(
-      id: map['id'] ?? '',
+      id: map['id'] as String,
       name: map['name'] ?? '',
       imageUrl: map['imageUrl'] ?? '',
       upiId: map['upiId'] ?? '',
       description: map['description'] ?? '',
       isActive: map['isActive'] ?? true,
+    );
+  }
+
+  factory QRCodePayment.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data() ?? {};
+    return QRCodePayment(
+      id: doc.id,
+      name: data['name'] ?? '',
+      imageUrl: data['imageUrl'] ?? '',
+      upiId: data['upiId'] ?? '',
+      description: data['description'] ?? '',
+      isActive: data['isActive'] ?? true,
     );
   }
 

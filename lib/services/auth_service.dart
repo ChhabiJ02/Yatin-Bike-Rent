@@ -4,6 +4,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 class AuthService {
   static final FirebaseAuth _auth = FirebaseAuth.instance;
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  static Stream<User?> authStateChanges() {
+    return _auth.authStateChanges();
+  }
   static const _validRoles = {'Admin', 'Staff', 'Customer'};
   static const Map<String, String> _emailAliases = {
     'admin': 'admin@gmail.com',

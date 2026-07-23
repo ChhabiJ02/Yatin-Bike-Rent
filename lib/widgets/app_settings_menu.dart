@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 import '../screens/login_screen.dart';
 import '../screens/payment_settings_screen.dart';
@@ -42,6 +46,9 @@ class _StaffProfileScreenState extends State<_StaffProfileScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   String? _userId;
+  File? _imageFile;
+  String? _profileImageUrl;
+  String? _userRole;
 
   @override
   void initState() {
@@ -64,6 +71,8 @@ class _StaffProfileScreenState extends State<_StaffProfileScreen> {
         final data = doc.data()!;
         _nameController.text = data['name'] ?? '';
         _phoneController.text = data['phone'] ?? '';
+        _profileImageUrl = data['profileImageUrl'];
+        _userRole = data['role'];
       }
     }
 
@@ -71,6 +80,68 @@ class _StaffProfileScreenState extends State<_StaffProfileScreen> {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    final pickedFile = await ImagePicker().pickImage(source: source);
+    if (pickedFile != null) {
+      setState(() {
+        _imageFile = File(pickedFile.path);
+      });
+    }
+  }
+
+  void _showImagePickerOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Camera'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickImage(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Gallery'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickImage(ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<String?> _uploadProfilePicture() async {
+    if (_imageFile == null) return null;
+    if (_userId == null) return null;
+
+    try {
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('profile_pictures')
+          .child('$_userId.jpg');
+
+      await storageRef.putFile(_imageFile!);
+      final downloadUrl = await storageRef.getDownloadURL();
+      return downloadUrl;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error uploading image: $e')),
+        );
+      }
+      return null;
     }
   }
 
@@ -83,13 +154,27 @@ class _StaffProfileScreenState extends State<_StaffProfileScreen> {
     });
 
     try {
+      String? newImageUrl;
+      if (_imageFile != null) {
+        newImageUrl = await _uploadProfilePicture();
+      }
+
+      final updateData = {
+        'name': _nameController.text.trim(),
+        'email': _emailController.text.trim(),
+      };
+
+      if (newImageUrl != null) {
+        updateData['profileImageUrl'] = newImageUrl;
+        setState(() {
+          _profileImageUrl = newImageUrl;
+        });
+      }
+
       await FirebaseFirestore.instance
           .collection('users')
           .doc(_userId)
-          .update({
-        'name': _nameController.text.trim(),
-        'phone': _phoneController.text.trim(),
-      });
+          .set(updateData, SetOptions(merge: true));
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -168,13 +253,47 @@ class _StaffProfileScreenState extends State<_StaffProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    CircleAvatar(
-                      radius: 50,
-                      backgroundColor: AppColors.ember,
-                      child: Icon(
-                        Icons.person,
-                        size: 50,
-                        color: Colors.white,
+                    GestureDetector(
+                      onTap: _showImagePickerOptions,
+                      child: Center(
+                        child: Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 50,
+                              backgroundColor: AppColors.ember,
+                              backgroundImage: _imageFile != null
+                                  ? FileImage(_imageFile!)
+                                  : _profileImageUrl != null
+                                      ? NetworkImage(_profileImageUrl!)
+                                      : null,
+                              child: _imageFile == null && _profileImageUrl == null
+                                  ? const Icon(
+                                      Icons.person,
+                                      size: 50,
+                                      color: Colors.white,
+                                    )
+                                  : null,
+                            ),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Container(
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: AppColors.ember,
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(6.0),
+                                  child: Icon(
+                                    Icons.camera_alt,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(height: 30),
@@ -198,6 +317,7 @@ class _StaffProfileScreenState extends State<_StaffProfileScreen> {
                     TextFormField(
                       controller: _phoneController,
                       keyboardType: TextInputType.phone,
+                      readOnly: true,
                       decoration: InputDecoration(
                         labelText: 'Phone Number',
                         prefixIcon: const Icon(Icons.phone_outlined),
@@ -215,7 +335,6 @@ class _StaffProfileScreenState extends State<_StaffProfileScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _emailController,
-                      readOnly: true,
                       decoration: InputDecoration(
                         labelText: 'Email',
                         prefixIcon: const Icon(Icons.email_outlined),
@@ -224,6 +343,24 @@ class _StaffProfileScreenState extends State<_StaffProfileScreen> {
                         ),
                       ),
                     ),
+                    if (_userRole == 'Admin') ...[
+                      const SizedBox(height: 24),
+                      const Divider(),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.qr_code_scanner_outlined,
+                            color: AppColors.sky),
+                        title: const Text('Payment Settings'),
+                        subtitle:
+                            const Text('Manage QR codes and payment methods'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) => const PaymentSettingsScreen()));
+                        },
+                      ),
+                      const Divider(),
+                    ],
                     const SizedBox(height: 32),
                     ElevatedButton(
                       onPressed: _isSaving ? null : _saveProfile,
@@ -251,34 +388,10 @@ class _StaffProfileScreenState extends State<_StaffProfileScreen> {
                     ),
                     const SizedBox(height: 16),
                     OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const PaymentSettingsScreen(),
-                          ),
-                        );
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.ember,
-                        side: const BorderSide(color: AppColors.ember),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      icon: const Icon(Icons.qr_code),
-                      label: const Text(
-                        'Payment Settings',
-                        style: TextStyle(fontSize: 16),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    OutlinedButton.icon(
                       onPressed: _logout,
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        side: const BorderSide(color: Colors.red),
+                        foregroundColor: Colors.red.shade400,
+                        side: BorderSide(color: Colors.red.shade400),
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),

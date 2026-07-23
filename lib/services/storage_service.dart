@@ -1,13 +1,10 @@
 import 'dart:async';
 import 'dart:io' as io;
-import 'dart:typed_data';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
@@ -271,22 +268,22 @@ class StorageService {
   }
 
   static Future<Uint8List> _prepareUploadBytes({required dynamic imageFile}) async {
-    // If running in web, we can't reliably use File-based compression here.
-    // Current app uses FormImagePicker which uses image_picker; it returns XFile.
-    // We support both XFile and io.File.
-    if (imageFile is XFile) {
-      final bytes = await imageFile.readAsBytes();
-      // Best effort size cap without re-compressing on web.
-      // (If >500KB, still upload; rules/requirement emphasize compression on device.)
-      if (bytes.length <= maxBytes) return bytes;
-      return bytes; // keep behavior predictable on web
+    if (imageFile is! XFile && imageFile is! io.File) {
+      throw ArgumentError('Unsupported imageFile type: ${imageFile.runtimeType}');
     }
 
-    if (imageFile is io.File) {
-      final compressed = await compressImageToMaxBytes(inputFile: imageFile);
-      return compressed;
+    // On web, we cannot use dart:io or flutter_image_compress.
+    // We read the bytes from XFile directly.
+    if (kIsWeb) {
+      if (imageFile is XFile) {
+        return await imageFile.readAsBytes();
+      }
+      // io.File is not supported on web.
+      throw ArgumentError('io.File is not supported on web.');
     }
 
-    throw ArgumentError('Unsupported imageFile type: ${imageFile.runtimeType}');
+    // On mobile (io), we can compress.
+    final fileToCompress = imageFile is XFile ? io.File(imageFile.path) : imageFile as io.File;
+    return await compressImageToMaxBytes(inputFile: fileToCompress);
   }
 }

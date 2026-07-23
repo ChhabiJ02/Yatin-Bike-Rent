@@ -77,7 +77,7 @@ class AppTheme {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.06)),
+        borderSide: BorderSide(color: Colors.black.withAlpha(15)), // ~0.06 alpha
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
@@ -99,7 +99,7 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.ink,
-          side: BorderSide(color: AppColors.ink.withValues(alpha: 0.12)),
+          side: BorderSide(color: AppColors.ink.withAlpha(30)), // ~0.12 alpha
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -113,14 +113,20 @@ class AppTheme {
     );
   }
 
-  static BoxDecoration softCard({Color color = AppColors.card}) {
+  static BoxDecoration softCard({
+    Color bgColor = AppColors.card,
+    Color? borderColor,
+  }) {
+    final bColor = borderColor ?? Colors.black.withAlpha(10); // ~0.04 alpha
     return BoxDecoration(
-      color: color,
+      color: bgColor,
       borderRadius: BorderRadius.circular(24),
-      border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+      border: borderColor == Colors.transparent
+          ? null
+          : Border.all(color: bColor),
       boxShadow: [
         BoxShadow(
-          color: AppColors.ink.withValues(alpha: 0.08),
+          color: AppColors.ink.withAlpha(20), // ~0.08 alpha
           blurRadius: 26,
           offset: const Offset(0, 14),
         ),

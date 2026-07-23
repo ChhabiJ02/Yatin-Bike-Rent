@@ -1,61 +1,30 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import '../models/qr_code.dart';
 
 class QRPaymentService {
-  static final CollectionReference<Map<String, dynamic>> _qrCollection =
-      FirebaseFirestore.instance.collection('paymentSettings');
-
-  static Stream<List<QRCodePayment>> qrCodesStream() {
-    return _qrCollection
-        .doc('qrCodes')
-        .collection('codes')
-        .where('isActive', isEqualTo: true)
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => QRCodePayment.fromMap(doc.data()))
-            .toList());
-  }
+  static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   static Future<List<QRCodePayment>> getActiveQRCodes() async {
-    final snapshot = await _qrCollection
-        .doc('qrCodes')
-        .collection('codes')
-        .where('isActive', isEqualTo: true)
-        .get();
-    return snapshot.docs
-        .map((doc) => QRCodePayment.fromMap(doc.data()))
-        .toList();
-  }
-
-  static Future<void> addQRCode(QRCodePayment qrCode) async {
-    await _qrCollection
-        .doc('qrCodes')
-        .collection('codes')
-        .doc(qrCode.id)
-        .set(qrCode.toMap());
-  }
-
-  static Future<void> updateQRCode(QRCodePayment qrCode) async {
-    await _qrCollection
-        .doc('qrCodes')
-        .collection('codes')
-        .doc(qrCode.id)
-        .update(qrCode.toMap());
-  }
-
-  static Future<void> deleteQRCode(String id) async {
-    await _qrCollection
-        .doc('qrCodes')
-        .collection('codes')
-        .doc(id)
-        .delete();
-  }
-
-  static Future<void> toggleQRCodeStatus(String id, bool isActive) async {
-    await _qrCollection
-        .doc('qrCodes')
-        .collection('codes')
-        .doc(id)
-        .update({'isActive': isActive});
+    try {
+      debugPrint("Fetching active QR codes from 'paymentSettings'...");
+      final snapshot = await _db
+          .collection('paymentSettings')
+          .doc('qrCodes')
+          .collection('codes')
+          .where('isActive', isEqualTo: true)
+          .get()
+          .timeout(const Duration(seconds: 15));
+      debugPrint("Successfully fetched ${snapshot.docs.length} QR codes.");
+      return snapshot.docs
+          .map((doc) => QRCodePayment.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      debugPrint('Error fetching active QR codes: $e');
+      // Return an empty list to ensure the Future always completes,
+      // allowing the UI to stop loading and show a message.
+      return [];
+    }
   }
 }

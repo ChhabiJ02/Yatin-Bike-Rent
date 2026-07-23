@@ -15,7 +15,9 @@ class PaymentRecordScreen extends StatefulWidget {
 }
 
 class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
-  final _customersCollection = FirebaseFirestore.instance.collection('customers');
+  final _customersCollection = FirebaseFirestore.instance.collection(
+    'customers',
+  );
   final _amountController = TextEditingController();
   final _transactionController = TextEditingController();
   final _notesController = TextEditingController();
@@ -24,6 +26,7 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
   List<QRCodePayment> _qrCodes = [];
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _qrLoadError = false;
 
   final _paymentModes = ['Cash', 'UPI', 'Bank Transfer', 'Card'];
 
@@ -34,8 +37,26 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
   }
 
   Future<void> _loadQRCodes() async {
-    _qrCodes = await QRPaymentService.getActiveQRCodes();
-    if (mounted) setState(() => _isLoading = false);
+    // Ensure the loading state is always reset, even if an error occurs.
+    try {
+      final codes = await QRPaymentService.getActiveQRCodes().timeout(
+        const Duration(seconds: 15),
+      );
+      if (mounted) {
+        setState(() {
+          _qrCodes = codes;
+        });
+      }
+    } on Exception catch (_) {
+      if (mounted) {
+        setState(() {
+          _qrCodes = [];
+          _qrLoadError = true;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -56,7 +77,33 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
+          : _qrCodes.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.qr_code_2, size: 64, color: AppColors.muted),
+                        const SizedBox(height: 12),
+                        Text(
+                          _qrLoadError
+                              ? 'Failed to load QR/payment data.'
+                              : 'No QR codes available. Add in Payment Settings.',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: AppColors.muted),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.settings),
+                          label: const Text('Close'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -109,24 +156,16 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
 
   Widget _buildQRSelection() {
     if (_qrCodes.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.grey[100],
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Text(
-          'No QR codes available. Add in Payment Settings.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: AppColors.muted),
-        ),
-      );
+      return const SizedBox.shrink();
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Select QR Code to Pay', style: TextStyle(fontWeight: FontWeight.w600)),
+        const Text(
+          'Select QR Code to Pay',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
         const SizedBox(height: 12),
         GridView.builder(
           shrinkWrap: true,
@@ -160,7 +199,10 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
                     ),
                     Padding(
                       padding: const EdgeInsets.all(8),
-                      child: Text(qr.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      child: Text(
+                        qr.name,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
                     ),
                   ],
                 ),
@@ -207,9 +249,9 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
 
   Future<void> _savePayment() async {
     if (_amountController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Amount is required')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Amount is required')));
       return;
     }
 
@@ -232,16 +274,16 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Payment recorded')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Payment recorded')));
         Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
 

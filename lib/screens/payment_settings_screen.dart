@@ -15,8 +15,10 @@ class PaymentSettingsScreen extends StatefulWidget {
 class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
   final _qrCollection = FirebaseFirestore.instance
       .collection('paymentSettings')
-      .doc('qrCodes')
-      .collection('codes');
+      .withConverter<QRCodePayment>(
+        fromFirestore: (snapshot, _) => QRCodePayment.fromFirestore(snapshot),
+        toFirestore: (qr, _) => qr.toMap(),
+      );
   // ignore: unused_field
   final _uuid = const Uuid();
 
@@ -26,43 +28,57 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
       appBar: AppBar(
         title: const Text('Payment Settings'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: _showAddQRDialog,
-          ),
+          IconButton(icon: const Icon(Icons.add), onPressed: _showAddQRDialog),
         ],
       ),
-      body: StreamBuilder(
+      body: StreamBuilder<QuerySnapshot<QRCodePayment>>(
         stream: _qrCollection.snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final qrCodes = (snapshot.data as QuerySnapshot).docs
-              .map((doc) {
-                final data = doc.data();
-                return QRCodePayment.fromMap(Map<String, dynamic>.from(data as Map));
-              })
-              .toList();
+          if (snapshot.hasError) {
+            debugPrint("PaymentSettings Error: ${snapshot.error}");
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.qr_code, size: 64, color: AppColors.muted),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'No Payment Methods Added',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Try again later.',
+                    style: TextStyle(color: AppColors.muted),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: _showAddQRDialog,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add QR Code'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          final docs = snapshot.data?.docs ?? [];
+          final qrCodes = docs.map((doc) => doc.data()).toList();
 
           if (qrCodes.isEmpty) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(
-                    Icons.qr_code,
-                    size: 64,
-                    color: AppColors.muted,
-                  ),
+                  const Icon(Icons.qr_code, size: 64, color: AppColors.muted),
                   const SizedBox(height: 16),
                   const Text(
-                    'No QR Codes Added',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    'No Payment Methods Added',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
                   const Text(
@@ -110,11 +126,12 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
       builder: (context) => _QRCodeEditSheet(
         existing: existing,
         onSave: (qrCode) async {
-          if (existing != null) {
-            await _qrCollection.doc(existing.id).update(qrCode.toMap());
-          } else {
-            await _qrCollection.doc(qrCode.id).set(qrCode.toMap());
+          try {            
+            await _qrCollection.doc(qrCode.id).set(qrCode, SetOptions(merge: true));
+          } catch (e) {
+            debugPrint('Error saving QR Code: $e');
           }
+
           // ignore: use_build_context_synchronously
           if (mounted) Navigator.pop(context);
         },
@@ -173,7 +190,9 @@ class _QRCodeManageCard extends StatelessWidget {
         children: [
           Expanded(
             child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
+              ),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -199,9 +218,7 @@ class _QRCodeManageCard extends StatelessWidget {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: qrCode.isActive
-                            ? AppColors.mint
-                            : Colors.grey,
+                        color: qrCode.isActive ? AppColors.mint : Colors.grey,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -267,7 +284,10 @@ class _QRCodeManageCard extends StatelessWidget {
                             children: [
                               Icon(Icons.delete, size: 20, color: Colors.red),
                               SizedBox(width: 8),
-                              Text('Delete', style: TextStyle(color: Colors.red)),
+                              Text(
+                                'Delete',
+                                style: TextStyle(color: Colors.red),
+                              ),
                             ],
                           ),
                         ),
@@ -292,10 +312,7 @@ class _QRCodeEditSheet extends StatefulWidget {
   final QRCodePayment? existing;
   final Future<void> Function(QRCodePayment) onSave;
 
-  const _QRCodeEditSheet({
-    this.existing,
-    required this.onSave,
-  });
+  const _QRCodeEditSheet({this.existing, required this.onSave});
 
   @override
   State<_QRCodeEditSheet> createState() => _QRCodeEditSheetState();
@@ -406,7 +423,7 @@ class _QRCodeEditSheetState extends State<_QRCodeEditSheet> {
     if (!_formKey.currentState!.validate()) return;
 
     final qrCode = QRCodePayment(
-      id: widget.existing?.id ?? _uuid.v4(),
+      id: widget.existing?.id ?? _uuid.v4(), // id is non-nullable now
       name: _nameController.text.trim(),
       imageUrl: _imageUrl ?? '',
       upiId: _upiController.text.trim(),

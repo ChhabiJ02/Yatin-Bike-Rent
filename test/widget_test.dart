@@ -1,9 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:streetbike_rental/main.dart';
+import 'package:streetbike_rental/app.dart';
 
 void main() {
   testWidgets('App loads smoke test', (WidgetTester tester) async {
-    await tester.pumpWidget(const YatinBikeRentApp());
+    // This test is very basic and will likely need to be expanded.
+    // It ensures the app can be built without crashing.
+    await tester.pumpWidget(const StreetBikeRentalApp());
 
     expect(find.text('StreetBike Rental'), findsWidgets);
   });
