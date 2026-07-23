@@ -28,38 +28,43 @@ class AdminDashboard extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.all(18),
             children: [
+              // 💡 Light & Attractive Gradient Welcome Card
               Container(
-                padding: const EdgeInsets.all(22),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: AppColors.heroGradient,
-                  borderRadius: BorderRadius.circular(28),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFE0E7FF), Color(0xFFCFFAFE)], // Premium Light Indigo to Cyan
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.ember.withAlpha(60),
-                      blurRadius: 28,
-                      offset: const Offset(0, 16),
+                      color: const Color(0xFF6366F1).withOpacity(0.2),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
                     ),
                   ],
                 ),
                 child: Row(
                   children: [
                     Container(
-                      height: 66,
-                      width: 66,
+                      height: 58,
+                      width: 58,
                       decoration: BoxDecoration(
-                        color: Colors.white.withAlpha(46),
-                        borderRadius: BorderRadius.circular(20),
+                        color: const Color(0xFF4F46E5).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(18),
                         border: Border.all(
-                          color: Colors.white.withAlpha(71),
+                          color: const Color(0xFF4F46E5).withOpacity(0.2),
                         ),
                       ),
                       child: const Icon(
                         Icons.dashboard_customize,
-                        color: Colors.white,
-                        size: 34,
+                        color: Color(0xFF4F46E5),
+                        size: 30,
                       ),
                     ),
-                    const SizedBox(width: 18),
+                    const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -69,21 +74,28 @@ class AdminDashboard extends StatelessWidget {
                             builder: (context, snapshot) {
                               final data = snapshot.data?.data();
                               final name = (data?['name'] as String?)?.trim();
-                              final display = name?.isNotEmpty == true ? 'Welcome Back, $name' : 'Welcome Back, Admin';
+                              final display = name?.isNotEmpty == true
+                                  ? 'Welcome Back, $name'
+                                  : 'Welcome Back, Admin';
                               return Text(
                                 display,
                                 style: const TextStyle(
-                                  fontSize: 22,
+                                  fontSize: 20,
                                   fontWeight: FontWeight.w900,
-                                  color: Colors.white,
+                                  color: Color(0xFF1E1B4B), // Premium Dark Slate
                                 ),
                               );
                             },
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 4),
                           const Text(
                             'Control fleet, bookings, staff, and revenue from one sharp view.',
-                            style: TextStyle(color: Colors.white, height: 1.45),
+                            style: TextStyle(
+                              color: Color(0xFF4338CA),
+                              fontSize: 12,
+                              height: 1.35,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ],
                       ),
@@ -93,7 +105,7 @@ class AdminDashboard extends StatelessWidget {
               ),
               const SizedBox(height: 20),
 
-              // Quick Actions
+              // Quick Actions Header
               const Text(
                 'Quick Actions',
                 style: TextStyle(
@@ -103,14 +115,15 @@ class AdminDashboard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 14),
+
+              // 💡 Shorter Grid Cards (childAspectRatio: 1.15)
               GridView.count(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 crossAxisCount: 2,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                // 💡 Aspect Ratio ઓછો કર્યો જેથી કન્ટેન્ટ સમાઈ જાય અને ઓવરફ્લો ન થાય
-                childAspectRatio: 1.1,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 14,
+                childAspectRatio: 1.15, // 💡 આસ્પેક્ટ રેશિયો વધારવાથી કાર્ડ્સ નાના અને કોમ્પેક્ટ થઈ જશે
                 children: const [
                   _AdminCard(
                     title: 'Vehicles',
@@ -122,7 +135,7 @@ class AdminDashboard extends StatelessWidget {
                     title: 'Bookings',
                     icon: Icons.receipt_long,
                     color: AppColors.sky,
-                    route: const CustomerBookingsScreen(),
+                    route: CustomerBookingsScreen(),
                   ),
                   _AdminCard(
                     title: 'Staff',
@@ -157,14 +170,13 @@ class _AdminCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      // 💡 પ્યોર સોલિડ વાઈટ (Solid White) કલર અને શેડો
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 12,
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
@@ -174,42 +186,55 @@ class _AdminCard extends StatelessWidget {
         child: InkWell(
           onTap: () {
             if (route != null) {
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => route!));
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => route!),
+              );
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text('$title management coming soon!')),
               );
             }
           },
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(20),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [ 
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: color.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(icon, size: 28, color: color),
+                  child: Icon(icon, size: 22, color: color),
                 ),
-                const Spacer(),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.black, // વાઈટ કાર્ડ પર સ્પષ્ટ વંચાય તેવો ડાર્ક કલર
-                  ),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Manage detailed data from one place.',
-                  style: TextStyle(color: Colors.black54, fontSize: 12, height: 1.3),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.black,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Manage detailed data from one place.',
+                      style: TextStyle(
+                        color: Colors.black54,
+                        fontSize: 10.5,
+                        height: 1.2,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ],
             ),

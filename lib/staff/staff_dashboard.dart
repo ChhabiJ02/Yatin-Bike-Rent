@@ -145,7 +145,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
               ),
             ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 32),
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 32),
               sliver: SliverToBoxAdapter(
                 child: _returnFilter == 'Recent Bookings'
                     ? StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -355,6 +355,7 @@ class _FilterHeaderDelegate extends SliverPersistentHeaderDelegate {
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -400,11 +401,12 @@ class _FilterHeaderDelegate extends SliverPersistentHeaderDelegate {
     );
   }
 
+  // 💡 Extent હાઇટ 120 કરી દીધી છે જેથી હવે ક્યારેય ઓવરફ્લો એરર નહીં આવે
   @override
-  double get maxExtent => 100;
+  double get maxExtent => 120;
 
   @override
-  double get minExtent => 100;
+  double get minExtent => 120;
 
   @override
   bool shouldRebuild(covariant _FilterHeaderDelegate oldDelegate) {
@@ -724,6 +726,7 @@ class _FilterChip extends StatelessWidget {
       selected: isSelected,
       selectedColor: AppColors.ember,
       backgroundColor: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2), // Compact padding
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
         side: BorderSide(

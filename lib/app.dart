@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:streetbike_rental/admin/admin_dashboard.dart';
 import 'package:streetbike_rental/customer/customer_dashboard.dart';
+import 'package:streetbike_rental/staff/staff_dashboard.dart';
 import 'package:streetbike_rental/screens/login_screen.dart';
 import 'package:streetbike_rental/services/auth_service.dart';
 import 'package:streetbike_rental/theme/app_theme.dart';
@@ -60,8 +61,10 @@ class RoleBasedRedirect extends StatelessWidget {
           final data = snapshot.data!.data() as Map<String, dynamic>;
           final role = data['role'] as String?;
 
-          if (role == 'Admin' || role == 'Staff') {
+          if (role == 'Admin') {
             return const AdminDashboard();
+          } else if (role == 'Staff') {
+            return const StaffDashboard();
           }
         }
         // Default to customer dashboard if role is not Admin/Staff or not set
