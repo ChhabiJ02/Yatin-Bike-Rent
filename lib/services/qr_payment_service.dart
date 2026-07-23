@@ -11,9 +11,6 @@ class QRPaymentService {
       debugPrint("Fetching active QR codes from 'paymentSettings'...");
       final snapshot = await _db
           .collection('paymentSettings')
-          .doc('qrCodes')
-          .collection('codes')
-          .where('isActive', isEqualTo: true)
           .get()
           .timeout(const Duration(seconds: 15));
       debugPrint("Successfully fetched ${snapshot.docs.length} QR codes.");
