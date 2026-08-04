@@ -1,8 +1,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:streetbike_rental/services/storage_service.dart';
-import 'package:streetbike_rental/theme/app_theme.dart';
+import 'package:street_bike_rental/services/storage_service.dart';
+import 'package:street_bike_rental/theme/app_theme.dart';
 
 class FormImagePicker extends StatefulWidget {
   final String label;

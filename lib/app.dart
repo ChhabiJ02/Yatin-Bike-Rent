@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:streetbike_rental/screens/splash_screen.dart';
-import 'package:streetbike_rental/theme/app_theme.dart';
+import 'package:street_bike_rental/screens/splash_screen.dart';
+import 'package:street_bike_rental/theme/app_theme.dart';
 
 class StreetBikeRentalApp extends StatelessWidget {
   const StreetBikeRentalApp({super.key});

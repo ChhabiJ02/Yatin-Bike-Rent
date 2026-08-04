@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:streetbike_rental/services/challan_service.dart';
+import 'package:street_bike_rental/services/challan_service.dart';
 
 void main() {
   test('buildCustomerCode formats the financial year prefix correctly', () {

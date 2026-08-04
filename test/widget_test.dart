@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:streetbike_rental/app.dart';
+import 'package:street_bike_rental/app.dart';
 
 void main() {
   testWidgets('App loads smoke test', (WidgetTester tester) async {

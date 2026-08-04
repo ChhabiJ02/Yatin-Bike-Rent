@@ -605,7 +605,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: DropdownButtonFormField<String>(
-            value: selectedValue,
+            initialValue: selectedValue,
             decoration: InputDecoration(
               labelText: 'Vehicle Name',
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -705,7 +705,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<String>(
-        value: controller.text.isEmpty ? null : controller.text,
+        initialValue: controller.text.isEmpty ? null : controller.text,
         decoration: InputDecoration(
           labelText: label,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -905,7 +905,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               child: Image.network(
                 _selectedQRCodeImageUrl!,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Icon(Icons.error, color: Colors.red),
+                errorBuilder: (_, _, _) => const Icon(Icons.error, color: Colors.red),
                 loadingBuilder: (_, child, progress) => progress == null ? child : const Center(child: CircularProgressIndicator()),
               ),
             ),
@@ -937,7 +937,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: DropdownButtonFormField<String>(
-            value: selectedValueExists ? _selectedQRCodeId : null,
+            initialValue: selectedValueExists ? _selectedQRCodeId : null,
             decoration: InputDecoration(
               labelText: 'Select QR Code',
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),

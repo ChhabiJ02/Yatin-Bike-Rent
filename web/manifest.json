@@ -1,6 +1,6 @@
 {
-    "name": "hiten_bike_rent",
-    "short_name": "hiten_bike_rent",
+    "name": "street_bike_rental",
+    "short_name": "street_bike_rental",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

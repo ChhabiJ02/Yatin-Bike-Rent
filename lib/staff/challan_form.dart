@@ -108,7 +108,7 @@ class ChallanForm {
   static final CollectionReference<Customer> _customersCollection =
       FirebaseFirestore.instance.collection('customers').withConverter<Customer>(
             fromFirestore: (snapshot, _) => Customer.fromFirestore(snapshot),
-            toFirestore: (customer, _) => customer?.toMap() ?? {},
+            toFirestore: (customer, _) => customer.toMap() ?? {},
           );
 
   static CollectionReference<Customer> get customersCollection => _customersCollection;
@@ -159,7 +159,7 @@ class ChallanForm {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return _ChallanFormWidget.forEdit(
+        return _ChallanFormWidget(
           custCode: custCode,
           sDate: sDate,
           partyName: partyName,
@@ -221,10 +221,9 @@ class _ChallanFormWidget extends StatefulWidget {
   final Transportation? transportation;
   final CustomerDocuments? customerDocuments;
 
-  // Default Constructor initializing optional parameters
   const _ChallanFormWidget({
-    this.custCode,
     this.sDate,
+    this.custCode,
     this.partyName,
     this.address,
     this.address2,
@@ -251,35 +250,7 @@ class _ChallanFormWidget extends StatefulWidget {
     this.customerDocuments,
   });
 
-  // Named Constructor for Editing
-  const _ChallanFormWidget.forEdit({
-    required this.custCode,
-    required this.sDate,
-    required this.partyName,
-    required this.address,
-    required this.address2,
-    required this.landmark,
-    required this.area,
-    required this.city,
-    required this.pincode,
-    required this.smsPhone,
-    required this.reference,
-    required this.aadharNo,
-    required this.licenceNo,
-    required this.remark,
-    required this.fineRs,
-    required this.returnDate,
-    required this.vehicleName,
-    required this.days,
-    required this.rate,
-    required this.billAmount,
-    required this.pickupRs,
-    required this.dropRs,
-    required this.extraP,
-    required this.helmet,
-    this.transportation,
-    this.customerDocuments,
-  });
+
 
   @override
   State<_ChallanFormWidget> createState() => _ChallanFormWidgetState();

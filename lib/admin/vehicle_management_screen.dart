@@ -50,7 +50,7 @@ class VehicleManagementScreen extends StatelessWidget {
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
                 elevation: 1,
-                shadowColor: AppColors.ink.withOpacity(0.1),
+                shadowColor: AppColors.ink.withValues(alpha: 0.1),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
@@ -162,7 +162,7 @@ class VehicleManagementScreen extends StatelessWidget {
                           decoration:
                               const InputDecoration(labelText: 'Number Plate')),
                       DropdownButtonFormField<String>(
-                        value: type,
+                        initialValue: type,
                         decoration: const InputDecoration(labelText: 'Type'),
                         items: ['Bike', 'Scooter']
                             .map((t) => DropdownMenuItem(value: t, child: Text(t)))
@@ -170,7 +170,7 @@ class VehicleManagementScreen extends StatelessWidget {
                         onChanged: (val) => setState(() => type = val),
                       ),
                       DropdownButtonFormField<String>(
-                        value: fuelType,
+                        initialValue: fuelType,
                         decoration:
                             const InputDecoration(labelText: 'Fuel Type'),
                         items: ['Petrol', 'Electric']
@@ -253,7 +253,7 @@ class VehicleManagementScreen extends StatelessWidget {
 
 class _VehicleForm extends StatefulWidget {
   final DocumentSnapshot? vehicleDoc;
-  const _VehicleForm({this.vehicleDoc});
+  const _VehicleForm() : vehicleDoc = null;
 
   @override
   State<_VehicleForm> createState() => __VehicleFormState();

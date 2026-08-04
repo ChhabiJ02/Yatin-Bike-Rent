@@ -64,7 +64,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '988044808292',
     projectId: 'yatin-bike-rent',
     storageBucket: 'yatin-bike-rent.firebasestorage.app',
-    iosBundleId: 'com.example.hitenBikeRent',
+    iosBundleId: 'com.example.street_bike_rental',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -73,7 +73,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '988044808292',
     projectId: 'yatin-bike-rent',
     storageBucket: 'yatin-bike-rent.firebasestorage.app',
-    iosBundleId: 'com.example.hitenBikeRent',
+    iosBundleId: 'com.example.street_bike_rental',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
