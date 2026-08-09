@@ -3,12 +3,14 @@ class CustomerDocuments {
   final String? idBack;
   final String? customerPhoto;
   final String? travelTicketPhoto;
+  final String? vehiclePhoto;
 
   CustomerDocuments({
     this.idFront,
     this.idBack,
     this.customerPhoto,
     this.travelTicketPhoto,
+    this.vehiclePhoto,
   });
 
   CustomerDocuments copyWith({
@@ -16,12 +18,14 @@ class CustomerDocuments {
     String? idBack,
     String? customerPhoto,
     String? travelTicketPhoto,
+    String? vehiclePhoto,
   }) {
     return CustomerDocuments(
       idFront: idFront ?? this.idFront,
       idBack: idBack ?? this.idBack,
       customerPhoto: customerPhoto ?? this.customerPhoto,
       travelTicketPhoto: travelTicketPhoto ?? this.travelTicketPhoto,
+      vehiclePhoto: vehiclePhoto ?? this.vehiclePhoto,
     );
   }
 
@@ -31,6 +35,7 @@ class CustomerDocuments {
       if (idBack != null) 'idBack': idBack,
       if (customerPhoto != null) 'customerPhoto': customerPhoto,
       if (travelTicketPhoto != null) 'travelTicketPhoto': travelTicketPhoto,
+      if (vehiclePhoto != null) 'vehiclePhoto': vehiclePhoto,
     };
   }
 
@@ -40,6 +45,7 @@ class CustomerDocuments {
       idBack: map['idBack'] ?? map['aadhaarBack'] ?? map['licenseBack'],
       customerPhoto: map['customerPhoto'] ?? map['customerVehiclePhoto'],
       travelTicketPhoto: map['travelTicketPhoto'],
+      vehiclePhoto: map['vehiclePhoto'],
     );
   }
 
@@ -47,7 +53,8 @@ class CustomerDocuments {
     return idFront == null &&
         idBack == null &&
         customerPhoto == null &&
-        travelTicketPhoto == null;
+        travelTicketPhoto == null &&
+        vehiclePhoto == null;
   }
 
   bool get isComplete {

@@ -20,6 +20,10 @@ class Customer {
   final Map<String, dynamic>? customerDocuments;
   final Map<String, dynamic>? transportation;
   final Map<String, dynamic>? payment;
+  final bool hasExtraHelmet;
+  final bool hasMobileHolder;
+  final double extraHelmetCharge;
+  final double mobileHolderCharge;
   final Timestamp? createdAt;
 
   Customer({
@@ -42,6 +46,10 @@ class Customer {
     this.customerDocuments,
     this.transportation,
     this.payment,
+    this.hasExtraHelmet = false,
+    this.hasMobileHolder = false,
+    this.extraHelmetCharge = 0.0,
+    this.mobileHolderCharge = 0.0,
     this.createdAt,
   });
 
@@ -65,6 +73,10 @@ class Customer {
     Map<String, dynamic>? customerDocuments,
     Map<String, dynamic>? transportation,
     Map<String, dynamic>? payment,
+    bool? hasExtraHelmet,
+    bool? hasMobileHolder,
+    double? extraHelmetCharge,
+    double? mobileHolderCharge,
     Timestamp? createdAt,
   }) {
     return Customer(
@@ -87,6 +99,10 @@ class Customer {
       customerDocuments: customerDocuments ?? this.customerDocuments,
       transportation: transportation ?? this.transportation,
       payment: payment ?? this.payment,
+      hasExtraHelmet: hasExtraHelmet ?? this.hasExtraHelmet,
+      hasMobileHolder: hasMobileHolder ?? this.hasMobileHolder,
+      extraHelmetCharge: extraHelmetCharge ?? this.extraHelmetCharge,
+      mobileHolderCharge: mobileHolderCharge ?? this.mobileHolderCharge,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -124,6 +140,10 @@ class Customer {
       transportation: data['transportation'] is Map
           ? Map<String, dynamic>.from(data['transportation'])
           : null,
+      hasExtraHelmet: data['hasExtraHelmet'] ?? false,
+      hasMobileHolder: data['hasMobileHolder'] ?? false,
+      extraHelmetCharge: (data['extraHelmetCharge'] as num?)?.toDouble() ?? 0.0,
+      mobileHolderCharge: (data['mobileHolderCharge'] as num?)?.toDouble() ?? 0.0,
       payment: data['payment'] is Map
           ? Map<String, dynamic>.from(data['payment'])
           : null,
@@ -152,6 +172,10 @@ class Customer {
       'customerDocuments': customerDocuments,
       'transportation': transportation,
       'payment': payment,
+      'hasExtraHelmet': hasExtraHelmet,
+      'hasMobileHolder': hasMobileHolder,
+      'extraHelmetCharge': extraHelmetCharge,
+      'mobileHolderCharge': mobileHolderCharge,
       'createdAt': createdAt ?? FieldValue.serverTimestamp(),
     };
   }

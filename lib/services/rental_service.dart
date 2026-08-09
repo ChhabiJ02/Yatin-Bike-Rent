@@ -49,20 +49,28 @@ class RentalService {
   }
 
   static Future<void> addVehicle({
+    required String no,
     required String name,
     required String number,
     required String type,
     required int hourlyRate,
     required int dailyRate,
     required String fuelType,
+    String? category,
+    String? chasisNo,
+    String? engNo,
   }) async {
     await _db.collection('vehicles').add({
+      'no': no,
       'name': name,
       'number': number,
       'type': type,
       'hourlyRate': hourlyRate,
       'dailyRate': dailyRate,
       'fuelType': fuelType,
+      'category': category,
+      'chasisNo': chasisNo,
+      'engNo': engNo,
       'available': true,
       'createdAt': FieldValue.serverTimestamp(),
     });
@@ -70,20 +78,28 @@ class RentalService {
 
   static Future<void> updateVehicle({
     required String vehicleId,
+    required String no,
     required String name,
     required String number,
     required String type,
     required int hourlyRate,
     required int dailyRate,
     required String fuelType,
+    String? category,
+    String? chasisNo,
+    String? engNo,
   }) async {
     await _db.collection('vehicles').doc(vehicleId).update({
+      'no': no,
       'name': name,
       'number': number,
       'type': type,
       'hourlyRate': hourlyRate,
       'dailyRate': dailyRate,
       'fuelType': fuelType,
+      'category': category,
+      'chasisNo': chasisNo,
+      'engNo': engNo,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -91,6 +107,59 @@ class RentalService {
   static Future<void> deleteVehicle(String vehicleId) async {
     await _db.collection('vehicles').doc(vehicleId).delete();
   }
+
+  /// Finds a single vehicle by its internal 'no' field.
+  static Future<DocumentSnapshot<Map<String, dynamic>>?> findVehicleByInternalNo(
+      String no) async {
+    if (no.trim().isEmpty) return null;
+
+    final querySnapshot = await _db
+        .collection('vehicles')
+        .where('no', isEqualTo: no.trim())
+        .limit(1)
+        .get();
+
+    return querySnapshot.docs.isNotEmpty ? querySnapshot.docs.first : null;
+  }
+
+  /// Finds a single vehicle by its registration number.
+  ///
+  /// The search is case-insensitive by querying an uppercase version of the number.
+  /// It's recommended to store a normalized (e.g., uppercase, no spaces) version
+  /// of the vehicle number in Firestore to make queries reliable.
+ static Future<DocumentSnapshot<Map<String, dynamic>>?> findVehicleByNumber(
+  String inputNumber,
+) async {
+  final query = inputNumber.trim();
+  if (query.isEmpty) return null;
+
+  final collection = FirebaseFirestore.instance.collection('vehicles');
+
+  // ૧. માત્ર 'No.' (no) ફીલ્ડ સાથે જ String મેચ કરશે
+  var snapshot = await collection
+      .where('no', isEqualTo: query)
+      .limit(1)
+      .get();
+
+  if (snapshot.docs.isNotEmpty) {
+    return snapshot.docs.first;
+  }
+
+  // ૨. જો ડેટાબેઝમાં 'no' Integer તરીકે સ્ટોર થયેલ હોય
+  final intValue = int.tryParse(query);
+  if (intValue != null) {
+    snapshot = await collection
+        .where('no', isEqualTo: intValue)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isNotEmpty) {
+      return snapshot.docs.first;
+    }
+  }
+
+  return null;
+}
 
   static Future<void> updateVehicleAvailability({
     required String vehicleId,

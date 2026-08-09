@@ -43,6 +43,7 @@ class VehicleManagementScreen extends StatelessWidget {
               final vehicle = vehicles[index];
               final data = vehicle.data() as Map<String, dynamic>;
               final name = data['name'] ?? 'N/A';
+              final no = data['no'] ?? '';
               final number = data['number'] ?? 'N/A';
               final type = data['type'] ?? 'N/A';
               final isAvailable = data['available'] as bool? ?? false;
@@ -68,7 +69,7 @@ class VehicleManagementScreen extends StatelessWidget {
                   ),
                   title: Text(name,
                       style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text('$number - $type'),
+                  subtitle: Text('No: $no, Plate: $number'),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -131,6 +132,7 @@ class VehicleManagementScreen extends StatelessWidget {
     final data = vehicleDoc?.data() as Map<String, dynamic>?;
 
     final formKey = GlobalKey<FormState>();
+    final noController = TextEditingController(text: data?['no'] ?? '');
     final nameController = TextEditingController(text: data?['name']);
     final numberController = TextEditingController(text: data?['number']);
     final hourlyRateController =
@@ -139,6 +141,12 @@ class VehicleManagementScreen extends StatelessWidget {
         TextEditingController(text: data?['dailyRate']?.toString());
 
     String? type = data?['type'] ?? 'Bike';
+    final categoryController =
+        TextEditingController(text: data?['category'] ?? '');
+    final chasisNoController =
+        TextEditingController(text: data?['chasisNo'] ?? '');
+    final engNoController =
+        TextEditingController(text: data?['engNo'] ?? '');
     String? fuelType = data?['fuelType'] ?? 'Petrol';
 
     showDialog(
@@ -155,20 +163,47 @@ class VehicleManagementScreen extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       TextFormField(
-                          controller: nameController,
-                          decoration: const InputDecoration(labelText: 'Name')),
+                        controller: noController,
+                        decoration: const InputDecoration(labelText: 'No.'),
+                        validator: (value) => value == null || value.isEmpty ? 'Please enter a vehicle number' : null,
+                      ),
+                      const SizedBox(height: 16),
                       TextFormField(
-                          controller: numberController,
-                          decoration:
-                              const InputDecoration(labelText: 'Number Plate')),
+                        controller: nameController,
+                        decoration: const InputDecoration(labelText: 'Name'),
+                        validator: (value) => value == null || value.isEmpty ? 'Please enter a name' : null,
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: numberController,
+                        decoration: const InputDecoration(labelText: 'Number Plate'),
+                        validator: (value) => value == null || value.isEmpty ? 'Please enter a number plate' : null,
+                      ),
+                      const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
                         initialValue: type,
                         decoration: const InputDecoration(labelText: 'Type'),
                         items: ['Bike', 'Scooter']
                             .map((t) => DropdownMenuItem(value: t, child: Text(t)))
                             .toList(),
-                        onChanged: (val) => setState(() => type = val),
+                        onChanged: (val) => setState(() => type = val!),
                       ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: categoryController,
+                        decoration: const InputDecoration(labelText: 'Category'),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: chasisNoController,
+                        decoration: const InputDecoration(labelText: 'Chasis No.'),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: engNoController,
+                        decoration: const InputDecoration(labelText: 'Engine No.'),
+                      ),
+                      const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
                         initialValue: fuelType,
                         decoration:
@@ -176,22 +211,26 @@ class VehicleManagementScreen extends StatelessWidget {
                         items: ['Petrol', 'Electric']
                             .map((f) => DropdownMenuItem(value: f, child: Text(f)))
                             .toList(),
-                        onChanged: (val) => setState(() => fuelType = val),
+                        onChanged: (val) => setState(() => fuelType = val!),
                       ),
+                      const SizedBox(height: 16),
                       TextFormField(
                         controller: hourlyRateController,
                         decoration:
                             const InputDecoration(labelText: 'Hourly Rate'),
                         keyboardType: TextInputType.number,
+                        validator: (value) => value == null || value.isEmpty ? 'Please enter an hourly rate' : null,
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly
                         ],
                       ),
+                      const SizedBox(height: 16),
                       TextFormField(
                         controller: dailyRateController,
                         decoration:
                             const InputDecoration(labelText: 'Daily Rate'),
                         keyboardType: TextInputType.number,
+                        validator: (value) => value == null || value.isEmpty ? 'Please enter a daily rate' : null,
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly
                         ],
@@ -211,31 +250,43 @@ class VehicleManagementScreen extends StatelessWidget {
               onPressed: () async {
                 if (formKey.currentState!.validate()) {
                   final vehicleData = {
+                    'no': noController.text,
                     'name': nameController.text,
                     'number': numberController.text,
                     'type': type!,
                     'hourlyRate': int.parse(hourlyRateController.text),
                     'dailyRate': int.parse(dailyRateController.text),
+                    'category': categoryController.text,
+                    'chasisNo': chasisNoController.text,
+                    'engNo': engNoController.text,
                     'fuelType': fuelType!,
                   };
 
                   if (isEditing) {
                     await RentalService.updateVehicle(
                       vehicleId: vehicleDoc.id,
+                      no: vehicleData['no'] as String,
                       name: vehicleData['name'] as String,
                       number: vehicleData['number'] as String,
                       type: vehicleData['type'] as String,
                       hourlyRate: vehicleData['hourlyRate'] as int,
                       dailyRate: vehicleData['dailyRate'] as int,
+                      category: vehicleData['category'] as String,
+                      chasisNo: vehicleData['chasisNo'] as String,
+                      engNo: vehicleData['engNo'] as String,
                       fuelType: vehicleData['fuelType'] as String,
                     );
                   } else {
                     await RentalService.addVehicle(
+                      no: vehicleData['no'] as String,
                       name: vehicleData['name'] as String,
                       number: vehicleData['number'] as String,
                       type: vehicleData['type'] as String,
                       hourlyRate: vehicleData['hourlyRate'] as int,
                       dailyRate: vehicleData['dailyRate'] as int,
+                      category: vehicleData['category'] as String,
+                      chasisNo: vehicleData['chasisNo'] as String,
+                      engNo: vehicleData['engNo'] as String,
                       fuelType: vehicleData['fuelType'] as String,
                     );
                   }

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:street_bike_rental/models/customer_documents.dart';
 import 'package:intl/intl.dart';
 
 import '../models/customer.dart';
@@ -139,19 +140,19 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppColors.navy,
+      backgroundColor: Colors.grey[100],
       appBar: AppBar(
         foregroundColor: Colors.white,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        backgroundColor: AppColors.primaryGreen,
+        elevation: 1,
         title: Text(
           appBarTitle,
           style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
-            color: Colors.white,
           ),
         ),
+        bottom: _buildHeader(context),
       ),
       body: SafeArea(
         child: Column(
@@ -159,68 +160,7 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
           children: [
             // Conditionally show filter chips only when not in a filtered view
             if (widget.filterType == null)
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: _filters.map((filter) {
-                    final isSelected = _selectedFilter == filter;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: ChoiceChip(
-                        label: Text(
-                          filter,
-                          style: TextStyle(
-                            color: isSelected ? Colors.white : Colors.black,
-                            fontWeight:
-                                isSelected ? FontWeight.bold : FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                        selected: isSelected,
-                        selectedColor: AppColors.ember,
-                        backgroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(
-                            color: isSelected
-                                ? AppColors.ember
-                                : Colors.white.withAlpha(200),
-                          ),
-                        ),
-                        showCheckmark: false,
-                        onSelected: (selected) {
-                          if (selected) {
-                            setState(() => _selectedFilter = filter);
-                          }
-                        },
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-
-            // Search Bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
-              child: TextField(
-                controller: _searchController,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Search by Name or Code...',
-                  hintStyle: const TextStyle(color: Colors.white54, fontSize: 14),
-                  prefixIcon: const Icon(Icons.search, color: Colors.white54),
-                  filled: true,
-                  fillColor: Colors.white.withAlpha(20),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                ),
-                onChanged: (value) => setState(() => _searchQuery = value),
-              ),
-            ),
+              _buildFilterChips(),
 
             // Customer List Stream
             Expanded(
@@ -234,7 +174,7 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                   }
                   if (snapshot.hasError) {
                     return Center(
-                      child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.white)),
+                      child: Text('Error: ${snapshot.error}', style: const TextStyle(color: AppColors.muted)),
                     );
                   }
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
@@ -248,6 +188,7 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                     final customer = Customer.fromFirestore(
                       doc as DocumentSnapshot<Map<String, dynamic>>,
                     );
+                    final vehicleNumber = (customer.vehicleHandover?['vehicleNumber'] ?? '').toLowerCase();
                     final name = customer.name.toLowerCase();
                     final code = customer.custCode.toLowerCase();
 
@@ -255,7 +196,8 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                     final matchesSearch = _searchQuery.isEmpty ||
                         name.contains(_searchQuery.toLowerCase()) ||
                         code.contains(_searchQuery.toLowerCase());
-
+                        // || vehicleNumber.contains(_searchQuery.toLowerCase());
+                        
                     if (!matchesSearch) return false;
 
                     // --- Pre-defined Filter (from dashboard) ---
@@ -346,6 +288,71 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
       ),
     );
   }
+
+  PreferredSize _buildHeader(BuildContext context) {
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(60),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        color: AppColors.primaryGreen,
+        child: TextField(
+          controller: _searchController,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'Search by Name, Code, or Vehicle No...',
+            hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+            prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.7)),
+            filled: true,
+            fillColor: Colors.white.withOpacity(0.15),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(30),
+              borderSide: BorderSide.none,
+            ),
+          ),
+          onChanged: (value) => setState(() => _searchQuery = value),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChips() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: _filters.map((filter) {
+          final isSelected = _selectedFilter == filter;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: ChoiceChip(
+              label: Text(filter),
+              labelStyle: TextStyle(
+                color: isSelected ? Colors.white : AppColors.ink,
+                fontWeight: FontWeight.w600,
+              ),
+              selected: isSelected,
+              selectedColor: AppColors.primaryGreen,
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(
+                  color: isSelected ? AppColors.primaryGreen : Colors.grey.shade300,
+                ),
+              ),
+              showCheckmark: false,
+              onSelected: (selected) {
+                if (selected) {
+                  setState(() => _selectedFilter = filter);
+                }
+              },
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
 }
 
 class _CustomerEntryCard extends StatelessWidget {
@@ -356,238 +363,270 @@ class _CustomerEntryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // --- Data Extraction and Null Safety ---
     final returnStatus = customer.vehicleHandover?['returnStatus'] ?? 'Pending';
     final isReturned = returnStatus == 'Returned';
+    final customerDocs = customer.customerDocuments != null
+        ? CustomerDocuments.fromMap(customer.customerDocuments!)
+        : CustomerDocuments();
+
+    final vehicleName = customer.vehicleName;
+    final vehicleNumber = customer.vehicleHandover?['vehicleNumber'] ?? 'N/A';
+
+    final pickupDate = customer.vehicleHandover?['vehicleGivenDate']?.isNotEmpty == true ? customer.vehicleHandover!['vehicleGivenDate'] : customer.sDate;
+    final pickupTime = customer.vehicleHandover?['vehicleGivenTime']?.isNotEmpty == true ? customer.vehicleHandover!['vehicleGivenTime'] : DateFormat('HH:mm').format(DateTime.now());
+    final returnDate = customer.vehicleHandover?['vehicleReturnDate'] ?? customer.returnDate;
+    final returnTime = customer.vehicleHandover?['vehicleReturnTime'] ?? '';
+
+    final double billAmount = double.tryParse(customer.billAmount) ?? 0.0;
+    final double paidAmount = double.tryParse(customer.payment?['paymentAmount']?.toString() ?? '0.0') ?? 0.0;
+    final double depositAmount = double.tryParse(customer.payment?['depositAmount']?.toString() ?? '0.0') ?? 0.0;
+    final double pendingAmount = (billAmount - paidAmount).clamp(0, double.infinity);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: AppTheme.softCard(),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header Row
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: AppColors.ember.withAlpha(25),
-                child: const Icon(Icons.person, color: AppColors.ember, size: 22),
+          // --- Header ---
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 32,
+                  backgroundColor: Colors.grey.shade200,
+                  backgroundImage: (customerDocs.customerPhoto != null && customerDocs.customerPhoto!.isNotEmpty)
+                      ? NetworkImage(customerDocs.customerPhoto!)
+                      : null,
+                  child: (customerDocs.customerPhoto == null || customerDocs.customerPhoto!.isEmpty)
+                      ? Icon(Icons.person, size: 36, color: Colors.grey.shade400)
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        customer.name.isNotEmpty ? customer.name : 'N/A',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.ink),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.phone, size: 14, color: AppColors.muted),
+                          const SizedBox(width: 4),
+                          Text(
+                            customer.smsPhone.isNotEmpty ? customer.smsPhone : 'N/A',
+                            style: const TextStyle(fontSize: 13, color: AppColors.muted),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.topRight,
+                  child: _ReturnStatusBadge(status: returnStatus),
+                ),
+              ],
+            ),
+          ),
+
+          // --- Vehicle & Dates ---
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 90,
+                  height: 90,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(12),
+                    image: customerDocs.customerPhoto != null
+                        ? DecorationImage(image: NetworkImage(customerDocs.customerPhoto!), fit: BoxFit.cover)
+                        : null,
+                  ),
+                  child: customerDocs.customerPhoto == null
+                      ? const Icon(Icons.directions_bike, color: AppColors.muted, size: 40)
+                      : null,
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(vehicleName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      const SizedBox(height: 4),
+                      Text(vehicleNumber, style: const TextStyle(color: AppColors.muted, fontSize: 13)),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          _buildDateColumn('Pickup', pickupDate, pickupTime),
+                          Container(
+                            height: 35,
+                            width: 1,
+                            color: Colors.grey.shade200,
+                            margin: const EdgeInsets.symmetric(horizontal: 12),
+                          ),
+                          _buildDateColumn('Return', returnDate, returnTime.isNotEmpty ? returnTime : DateFormat('HH:mm').format(DateTime.now())),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // --- Add-ons Chips ---
+          if (customer.hasExtraHelmet || customer.hasMobileHolder)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Wrap(
+                spacing: 8.0,
+                runSpacing: 4.0,
+                children: [
+                  if (customer.hasExtraHelmet)
+                    _buildAddonChip('+ Extra Helmet', '₹${customer.extraHelmetCharge.toStringAsFixed(0)}'),
+                  if (customer.hasMobileHolder)
+                    _buildAddonChip('+ Mobile Holder', '₹${customer.mobileHolderCharge.toStringAsFixed(0)}'),
+                ],
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+          // --- Payment Summary ---
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: IntrinsicHeight(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    Text(
-                      customer.name.isNotEmpty ? customer.name : 'Customer',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.ink,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Code: ${customer.custCode}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.muted,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    _buildPaymentStat('Paid', '₹${billAmount > 0 ? billAmount.toStringAsFixed(0) : paidAmount.toStringAsFixed(0)}', Icons.account_balance_wallet, Colors.green),
+                    const VerticalDivider(width: 1),
+                    _buildPaymentStat('Pending', '₹${pendingAmount.toStringAsFixed(0)}', Icons.hourglass_bottom, Colors.orange),
+                    const VerticalDivider(width: 1),
+                    _buildPaymentStat('Deposit', '₹${depositAmount.toStringAsFixed(0)}', Icons.shield, Colors.blue),
                   ],
                 ),
               ),
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.amber.withAlpha(25),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  customer.vehicleName.isNotEmpty ? customer.vehicleName : 'Vehicle',
-                  style: const TextStyle(
-                    color: AppColors.ember,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 11,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              _ReturnStatusBadge(status: returnStatus),
-            ],
+            ),
           ),
 
-          const SizedBox(height: 14),
-
-          // Dates & Days Row
-          Row(
-            children: [
-              const Icon(Icons.calendar_today, size: 15, color: AppColors.muted),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  customer.returnDate.isNotEmpty
-                      ? '${customer.sDate} - ${customer.returnDate}'
-                      : customer.sDate,
-                  style: const TextStyle(
-                    color: AppColors.ink,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(Icons.access_time_filled, size: 15, color: AppColors.muted),
-              const SizedBox(width: 4),
-              Text(
-                '${customer.days.isNotEmpty ? customer.days : "0"} days',
-                style: const TextStyle(
-                  color: AppColors.ink,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 10),
-
-          // Amount & Rate Row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
+          // --- Actions ---
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+            child: IntrinsicHeight(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  const Text(
-                    '₹ ',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.ink,
-                    ),
-                  ),
-                  Text(
-                    customer.billAmount.isNotEmpty ? customer.billAmount : "0",
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.ink,
-                    ),
-                  ),
+                  _buildActionButton(context, 'Invoice', Icons.receipt_long, () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => InvoicePreviewScreen(custCode: customer.custCode)));
+                  }),
+                  const VerticalDivider(),
+                  _buildActionButton(context, 'Payment', Icons.payment, () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => PaymentRecordScreen(custCode: customer.custCode)));
+                  }),
+                  const VerticalDivider(),
+                  _buildActionButton(context, 'Extend', Icons.sync, () {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Extend feature coming soon!')));
+                  }),
+                  if (!isReturned) ...[
+                    const VerticalDivider(),
+                    _buildActionButton(context, 'Return', Icons.keyboard_return, () {
+                      if (onStatusChange != null) onStatusChange!(customer.custCode, 'Returned');
+                    }),
+                  ],
                 ],
               ),
-              Text(
-                'Rate: ₹${customer.rate.isNotEmpty ? customer.rate : "0"}',
-                style: const TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-          const Divider(height: 1, color: Color(0xFFEEEEEE)),
-          const SizedBox(height: 8),
-
-          // Action Buttons
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ChallanEntryScreen(custCode: customer.custCode),
-                    ),
-                  );
-                },
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: const Text(
-                  'Edit',
-                  style: TextStyle(color: AppColors.ember, fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(width: 8),
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => InvoicePreviewScreen(custCode: customer.custCode),
-                    ),
-                  );
-                },
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: const Text(
-                  'Invoice',
-                  style: TextStyle(color: AppColors.ember, fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(width: 8),
-              if (!isReturned)
-                TextButton(
-                  onPressed: () {
-                    if (onStatusChange != null) {
-                      onStatusChange!(customer.custCode, 'Returned');
-                    }
-                  },
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: const Text(
-                    'Mark Returned',
-                    style: TextStyle(color: AppColors.ember, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              if (isReturned)
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => PaymentRecordScreen(custCode: customer.custCode),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.currency_rupee, size: 14),
-                  label: const Text('Payment', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.mint,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                ),
-            ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAddonChip(String label, String price) {
+    return Chip(
+      avatar: const Icon(Icons.add_circle_outline, size: 16, color: AppColors.primaryGreen),
+      label: Text('$label ($price)'),
+      labelStyle: const TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.w600, fontSize: 11),
+      backgroundColor: AppColors.primaryGreen.withOpacity(0.1),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: AppColors.primaryGreen.withOpacity(0.2),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDateColumn(String title, String date, String time) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(color: AppColors.muted, fontSize: 12, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 2),
+          Text(date.isNotEmpty ? date : DateFormat('dd-MM-yyyy').format(DateTime.now()), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          Text(time.isNotEmpty ? time : '--:--', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentStat(String label, String value, IconData icon, Color color) {
+    return Expanded(
+      child: Column(
+        children: [Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 20, color: color),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+                const SizedBox(height: 2),
+                Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
+              ],
+            ),
+          ],
+        )],
+      ),
+    );
+  }
+
+  Widget _buildActionButton(BuildContext context, String label, IconData icon, VoidCallback onPressed) {
+    return TextButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18, color: AppColors.primaryGreen),
+      label: Text(label, style: const TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.w600)),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
@@ -599,7 +638,7 @@ class _ReturnStatusBadge extends StatelessWidget {
   const _ReturnStatusBadge({this.status = 'Pending'});
 
   Color get _badgeColor {
-    return status == 'Returned' ? AppColors.mint : AppColors.amber;
+    return status == 'Returned' ? AppColors.primaryGreen : AppColors.amber;
   }
 
   IconData get _icon {
@@ -609,10 +648,10 @@ class _ReturnStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: _badgeColor.withAlpha(30),
-        borderRadius: BorderRadius.circular(10),
+        color: _badgeColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -624,7 +663,7 @@ class _ReturnStatusBadge extends StatelessWidget {
             style: TextStyle(
               color: _badgeColor,
               fontWeight: FontWeight.bold,
-              fontSize: 11,
+              fontSize: 12,
             ),
           ),
         ],
