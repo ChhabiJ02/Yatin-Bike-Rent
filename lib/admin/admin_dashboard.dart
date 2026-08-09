@@ -1,11 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
-import 'package:street_bike_rental/admin/vehicle_management_screen.dart';
-import 'package:street_bike_rental/admin/staff_management_screen.dart';
 import 'package:street_bike_rental/admin/customer_bookings_screen.dart';
 import 'package:street_bike_rental/admin/customer_list_screen.dart';
+import 'package:street_bike_rental/admin/profile_screen.dart';
+import 'package:street_bike_rental/admin/staff_management_screen.dart';
+import 'package:street_bike_rental/admin/vehicle_management_screen.dart';
 
+import '../screens/login_screen.dart';
+import '../screens/challan_entry_screen.dart';
 import '../services/auth_service.dart';
 
 class AdminDashboard extends StatelessWidget {
@@ -19,14 +23,22 @@ class AdminDashboard extends StatelessWidget {
     if (dateField is Timestamp) {
       date = dateField.toDate();
     } else if (dateField is String) {
-      date = DateTime.tryParse(dateField);
+      try {
+        // Handles 'dd-MM-yyyy HH:mm:ss' format
+        date = DateFormat('dd-MM-yyyy HH:mm:ss').parse(dateField);
+      } catch (e) {
+        // Fallback for ISO 8601 format
+        date = DateTime.tryParse(dateField);
+      }
     } else if (dateField is DateTime) {
       date = dateField;
     }
 
     if (date == null) return false;
     final now = DateTime.now();
-    return date.year == now.year && date.month == now.month && date.day == now.day;
+    return date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day;
   }
 
   @override
@@ -37,12 +49,92 @@ class AdminDashboard extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: bgBackgroundColor,
+
+      // ---------------- 🟩 1. SIDE DRAWER ----------------
+      drawer: Drawer(
+        child: Column(
+          children: [
+            UserAccountsDrawerHeader(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [primaryGreen, darkGreenGradient],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              currentAccountPicture: const CircleAvatar(
+                backgroundColor: Colors.white,
+                child: Icon(Icons.person, color: primaryGreen, size: 40),
+              ),
+              accountName: StreamBuilder(
+                stream: AuthService.currentUserProfileStream(),
+                builder: (context, snapshot) {
+                  final data = snapshot.data?.data();
+                  final name = (data?['name'] as String?)?.trim();
+                  return Text(
+                    name?.isNotEmpty == true ? name! : 'Admin User',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  );
+                },
+              ),
+              accountEmail: Text(
+                AuthService.currentUser?.email ?? '',
+                style: const TextStyle(color: Colors.white70),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_outline, color: primaryGreen),
+              title: const Text(
+                'My Profile',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              onTap: () {
+                Navigator.pop(context); // Close Drawer
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                );
+              },
+            ),
+            const Spacer(),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.redAccent),
+              title: const Text(
+                'Logout',
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              onTap: () async {
+                await AuthService.signOut();
+                if (context.mounted) {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    (route) => false,
+                  );
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+
+      // ---------------- 🟩 2. APP BAR ----------------
       appBar: AppBar(
         backgroundColor: primaryGreen,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.menu, color: Colors.white, size: 28),
-          onPressed: () {},
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu, color: Colors.white, size: 28),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
         ),
         title: const Text(
           'Dashboard',
@@ -58,8 +150,11 @@ class AdminDashboard extends StatelessWidget {
             alignment: Alignment.center,
             children: [
               IconButton(
-                icon: const Icon(Icons.notifications_none_outlined,
-                    color: Colors.white, size: 28),
+                icon: const Icon(
+                  Icons.notifications_none_outlined,
+                  color: Colors.white,
+                  size: 28,
+                ),
                 onPressed: () {},
               ),
               Positioned(
@@ -79,10 +174,11 @@ class AdminDashboard extends StatelessWidget {
           const SizedBox(width: 8),
         ],
       ),
+
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // ---------------- 1. GREEN HERO HEADER ----------------
+            // ---------------- 🟩 3. GREEN HERO HEADER ----------------
             Container(
               width: double.infinity,
               decoration: const BoxDecoration(
@@ -130,10 +226,7 @@ class AdminDashboard extends StatelessWidget {
                       const SizedBox(height: 4),
                       const Text(
                         'Have a great day!',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 14,
-                        ),
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
                       ),
                       const SizedBox(height: 60),
                     ],
@@ -141,14 +234,16 @@ class AdminDashboard extends StatelessWidget {
                   Positioned(
                     right: -10,
                     bottom: 0,
-                    child: Image.network(
-                      'https://png.pngtree.com/png-vector/20250913/ourmid/pngtree-white-motor-scooter-with-vintage-classic-design-and-chrome-metal-details-png-image_17421023.webp',
+                    child: Image.asset(
+                      'assets/logos/png/dash_header1.webp',
                       height: 150,
                       width: 200,
                       fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const Icon(Icons.two_wheeler,
-                              size: 100, color: Colors.white24),
+                      errorBuilder: (context, error, stackTrace) => const Icon(
+                        Icons.two_wheeler,
+                        size: 100,
+                        color: Colors.white24,
+                      ),
                     ),
                   ),
                 ],
@@ -160,7 +255,7 @@ class AdminDashboard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ---------------- 2. EXACT Dynamic Cards (No Subtitle) ----------------
+                  // ---------------- 🟩 4. DYNAMIC STAT CARDS ----------------
                   Row(
                     children: [
                       // Card 1: Vehicles Count
@@ -182,7 +277,8 @@ class AdminDashboard extends StatelessWidget {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => const VehicleManagementScreen(),
+                                  builder: (_) =>
+                                      const VehicleManagementScreen(),
                                 ),
                               );
                             },
@@ -194,7 +290,7 @@ class AdminDashboard extends StatelessWidget {
                       // Card 2: Bookings Count
                       StreamBuilder<QuerySnapshot>(
                         stream: FirebaseFirestore.instance
-                            .collection('bookings')
+                            .collection('customers')
                             .snapshots(),
                         builder: (context, snapshot) {
                           final totalBookings = snapshot.data?.docs.length ?? 0;
@@ -210,7 +306,8 @@ class AdminDashboard extends StatelessWidget {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => const CustomerBookingsScreen(),
+                                  builder: (_) =>
+                                      const CustomerBookingsScreen(),
                                 ),
                               );
                             },
@@ -219,7 +316,7 @@ class AdminDashboard extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
 
-                      // Card 3: Customers Count (role == 'customer')
+                      // Card 3: Customers Count
                       StreamBuilder<QuerySnapshot>(
                         stream: FirebaseFirestore.instance
                             .collection('users')
@@ -228,7 +325,10 @@ class AdminDashboard extends StatelessWidget {
                           final docs = snapshot.data?.docs ?? [];
                           final customerCount = docs.where((doc) {
                             final data = doc.data() as Map<String, dynamic>;
-                            final role = data['role']?.toString().toLowerCase().trim();
+                            final role = data['role']
+                                ?.toString()
+                                .toLowerCase()
+                                .trim();
                             return role == 'customer' || role == 'user';
                           }).length;
 
@@ -252,7 +352,7 @@ class AdminDashboard extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
 
-                      // Card 4: Staff Count (role == 'staff')
+                      // Card 4: Staff Count
                       StreamBuilder<QuerySnapshot>(
                         stream: FirebaseFirestore.instance
                             .collection('users')
@@ -261,7 +361,10 @@ class AdminDashboard extends StatelessWidget {
                           final docs = snapshot.data?.docs ?? [];
                           final staffCount = docs.where((doc) {
                             final data = doc.data() as Map<String, dynamic>;
-                            final role = data['role']?.toString().toLowerCase().trim();
+                            final role = data['role']
+                                ?.toString()
+                                .toLowerCase()
+                                .trim();
                             return role == 'staff' || role == 'admin';
                           }).length;
 
@@ -276,7 +379,8 @@ class AdminDashboard extends StatelessWidget {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => const StaffManagementScreen(),
+                                  builder: (_) =>
+                                      const StaffManagementScreen(),
                                 ),
                               );
                             },
@@ -288,26 +392,160 @@ class AdminDashboard extends StatelessWidget {
 
                   const SizedBox(height: 16),
 
-                  // ---------------- 3. FINANCIAL CARDS ----------------
+                  // ---------------- 🟩 5. FINANCIAL CARDS ----------------
                   Row(
                     children: [
                       Expanded(
-                        child: _buildFinancialCard(
-                          title: "Today's Collection",
-                          amount: "₹18,500",
-                          titleColor: primaryGreen,
-                          amountColor: primaryGreen,
-                          bgColor: const Color(0xFFF0FDF4),
+                        child: StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('customers')
+                              .snapshots(),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return _buildFinancialCard(
+                                title: "Today's Collection",
+                                amount: "...",
+                                titleColor: primaryGreen,
+                                amountColor: primaryGreen,
+                                bgColor: const Color(0xFFF0FDF4),
+                              );
+                            }
+                            if (snapshot.hasError) {
+                              return _buildFinancialCard(
+                                title: "Today's Collection",
+                                amount: "Error",
+                                titleColor: primaryGreen,
+                                amountColor: primaryGreen,
+                                bgColor: const Color(0xFFF0FDF4),
+                              );
+                            }
+
+                            double totalCollection = 0.0;
+                            final docs = snapshot.data?.docs ?? [];
+                            for (var doc in docs) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              final createdAt = data['createdAt'];
+                              final sDate = data['sDate'];
+
+                              // Check if the booking/payment is for today
+                              if (_isToday(createdAt) || _isToday(sDate)) {
+                                final paymentMap =
+                                    data['payment'] as Map<String, dynamic>?;
+                                if (paymentMap != null) {
+                                  final paymentAmountStr =
+                                      paymentMap['paymentAmount'] as String?;
+                                  if (paymentAmountStr != null &&
+                                      paymentAmountStr.isNotEmpty) {
+                                    totalCollection +=
+                                        double.tryParse(paymentAmountStr) ??
+                                            0.0;
+                                  }
+                                }
+                              }
+                            }
+
+                            // Format the total collection amount
+                            final formatter = NumberFormat('#,##0', 'en_IN');
+                            final formattedAmount =
+                                "₹ ${formatter.format(totalCollection)}";
+
+                            return _buildFinancialCard(
+                              title: "Today's Collection",
+                              amount: formattedAmount,
+                              titleColor: primaryGreen,
+                              amountColor: primaryGreen,
+                              bgColor: const Color(0xFFF0FDF4),
+                            );
+                          },
                         ),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
-                        child: _buildFinancialCard(
-                          title: "Pending Payments",
-                          amount: "₹7,200",
-                          titleColor: const Color(0xFFEA580C),
-                          amountColor: const Color(0xFFEA580C),
-                          bgColor: const Color(0xFFFFF7ED),
+                        child: StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('customers')
+                              .snapshots(),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return _buildFinancialCard(
+                                title: "Pending Payments",
+                                amount: "...",
+                                subtitle: "Loading...",
+                                titleColor: const Color(0xFFEA580C),
+                                amountColor: const Color(0xFFEA580C),
+                                bgColor: const Color(0xFFFFF7ED),
+                              );
+                            }
+                            if (snapshot.hasError) {
+                              return _buildFinancialCard(
+                                title: "Pending Payments",
+                                amount: "Error",
+                                subtitle: "Could not calculate",
+                                titleColor: const Color(0xFFEA580C),
+                                amountColor: const Color(0xFFEA580C),
+                                bgColor: const Color(0xFFFFF7ED),
+                              );
+                            }
+
+                            double totalPendingAmount = 0.0;
+                            int pendingCount = 0;
+                            final docs = snapshot.data?.docs ?? [];
+
+                            for (var doc in docs) {
+                              final data = doc.data() as Map<String, dynamic>;
+
+                              // Safely parse billAmount
+                              final billAmountStr =
+                                  data['billAmount'] as String?;
+                              final double billAmount =
+                                  double.tryParse(billAmountStr ?? '') ?? 0.0;
+
+                              // Safely parse payment.paymentAmount
+                              double paymentAmount = 0.0;
+                              final paymentMap =
+                                  data['payment'] as Map<String, dynamic>?;
+                              if (paymentMap != null) {
+                                final paStr =
+                                    paymentMap['paymentAmount'] as String?;
+                                paymentAmount =
+                                    double.tryParse(paStr ?? '') ?? 0.0;
+                              }
+
+                              final double pending = billAmount - paymentAmount;
+
+                              if (pending > 0) {
+                                totalPendingAmount += pending;
+                                pendingCount++;
+                              }
+                            }
+
+                            // Format the total pending amount
+                            final formatter = NumberFormat('#,##0', 'en_IN');
+                            final formattedAmount =
+                                "₹ ${formatter.format(totalPendingAmount)}";
+
+                            return _buildFinancialCard(
+                              title: "Pending Payments",
+                              amount: formattedAmount,
+                              subtitle: "$pendingCount Pending",
+                              titleColor: const Color(0xFFEA580C),
+                              amountColor: const Color(0xFFEA580C),
+                              bgColor: const Color(0xFFFFF7ED),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const CustomerBookingsScreen(
+                                      filterType: 'pending_payments',
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
                         ),
                       ),
                     ],
@@ -315,7 +553,7 @@ class AdminDashboard extends StatelessWidget {
 
                   const SizedBox(height: 24),
 
-                  // ---------------- 4. TODAY OVERVIEW ----------------
+                  // ---------------- 🟩 6. TODAY OVERVIEW ----------------
                   const Text(
                     'Today Overview',
                     style: TextStyle(
@@ -326,18 +564,36 @@ class AdminDashboard extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
 
-                  // Dynamic Today's Bookings
+                  // Today's Bookings
                   StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance
-                        .collection('bookings')
+                        .collection('customers')
                         .snapshots(),
                     builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        // Display a loading indicator while fetching data
+                        return _buildOverviewTile(
+                          icon: Icons.calendar_today_outlined,
+                          title: "Today's Bookings",
+                          count: "...",
+                          onTap: () {},
+                        );
+                      }
+                      if (snapshot.hasError) {
+                        // Display an error message if something goes wrong
+                        return _buildOverviewTile(
+                          icon: Icons.error_outline,
+                          title: "Today's Bookings",
+                          count: "!",
+                          onTap: () {},
+                        );
+                      }
+
+                      // When data is loaded, display the count
                       final docs = snapshot.data?.docs ?? [];
                       final todayBookingsCount = docs.where((doc) {
                         final data = doc.data() as Map<String, dynamic>;
-                        return _isToday(data['createdAt']) ||
-                            _isToday(data['bookingDate']) ||
-                            _isToday(data['date']);
+                        return _isToday(data['sDate']);
                       }).length;
 
                       return _buildOverviewTile(
@@ -348,7 +604,9 @@ class AdminDashboard extends StatelessWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => const CustomerBookingsScreen(),
+                              builder: (_) => const CustomerBookingsScreen(
+                                filterType: 'todays_bookings',
+                              ),
                             ),
                           );
                         },
@@ -358,44 +616,81 @@ class AdminDashboard extends StatelessWidget {
 
                   const SizedBox(height: 10),
 
-                  // Dynamic Today's Returns
+                  // Today's Returns
                   StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('bookings')
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      final docs = snapshot.data?.docs ?? [];
-                      final todayReturnsCount = docs.where((doc) {
-                        final data = doc.data() as Map<String, dynamic>;
-                        return _isToday(data['returnDate']) ||
-                            _isToday(data['endDate']) ||
-                            _isToday(data['dropOffDate']);
-                      }).length;
+  stream: FirebaseFirestore.instance.collection('customers').snapshots(),
+  builder: (context, snapshot) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return _buildOverviewTile(
+        icon: Icons.exit_to_app_rounded,
+        title: "Today's Returns",
+        count: "...",
+        onTap: () {},
+      );
+    }
+    if (snapshot.hasError) {
+      return _buildOverviewTile(
+        icon: Icons.error_outline,
+        title: "Today's Returns",
+        count: "!",
+        onTap: () {},
+      );
+    }
 
-                      return _buildOverviewTile(
-                        icon: Icons.exit_to_app_rounded,
-                        title: "Today's Returns",
-                        count: "$todayReturnsCount",
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const CustomerBookingsScreen(),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
+    final docs = snapshot.data?.docs ?? [];
+    
+    final todayReturnsCount = docs.where((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      final handover = data['vehicleHandover'] as Map<String, dynamic>?;
+
+      // returnStatus 'Returned' હોવું જોઈએ 
+      final isReturned = handover?['returnStatus'] == 'Returned';
+
+      // ૧. અગ્રતા: vehicleReturnDate તારીખ ચકાસો
+      // ૨. જો તે ખાલી હોય તો document ની સાચી createdAt / sDate ચકાસો
+      final returnDate = handover?['vehicleReturnDate'];
+      final fallbackDate = data['createdAt'] ?? data['sDate'];
+
+      final isReturnToday = _isToday(
+        (returnDate != null && returnDate.toString().isNotEmpty)
+            ? returnDate
+            : fallbackDate,
+      );
+
+      return isReturned && isReturnToday;
+    }).length;
+
+    return _buildOverviewTile(
+      icon: Icons.exit_to_app_rounded,
+      title: "Today's Returns",
+      count: "$todayReturnsCount",
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const CustomerBookingsScreen(
+              filterType: 'todays_returns',
+            ),
+          ),
+        );
+      },
+    );
+  },
+),
 
                   const SizedBox(height: 20),
 
-                  // ---------------- 5. NEW BOOKING BUTTON ----------------
+                  // ---------------- 🟩 7. NEW BOOKING BUTTON ----------------
                   SizedBox(
                     width: double.infinity,
                     height: 54,
                     child: ElevatedButton.icon(
-                      onPressed: () {},
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ChallanEntryScreen()),
+                        );
+                      },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: primaryGreen,
                         shape: RoundedRectangleBorder(
@@ -403,7 +698,11 @@ class AdminDashboard extends StatelessWidget {
                         ),
                         elevation: 0,
                       ),
-                      icon: const Icon(Icons.add, color: Colors.white, size: 24),
+                      icon: const Icon(
+                        Icons.add,
+                        color: Colors.white,
+                        size: 24,
+                      ),
                       label: const Text(
                         'New Booking',
                         style: TextStyle(
@@ -424,7 +723,7 @@ class AdminDashboard extends StatelessWidget {
     );
   }
 
-  // 💡 Clean Stat Card Builder (No Subtitle)
+  // 💡 Stat Card Builder
   Widget _buildTopStatCard({
     required String title,
     required String value,
@@ -474,59 +773,77 @@ class AdminDashboard extends StatelessWidget {
     );
   }
 
+  // 💡 Financial Card Builder
   Widget _buildFinancialCard({
     required String title,
     required String amount,
     required Color titleColor,
     required Color amountColor,
     required Color bgColor,
+    String? subtitle,
+    VoidCallback? onTap,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: titleColor,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                color: titleColor,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            amount,
-            style: TextStyle(
-              color: amountColor,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
+            if (subtitle != null) ...[
+              const SizedBox(height: 4),
               Text(
-                'View details',
+                subtitle,
                 style: TextStyle(
-                  color: titleColor,
-                  fontSize: 12,
+                  color: titleColor.withOpacity(0.8),
+                  fontSize: 11,
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              const SizedBox(width: 4),
-              Icon(Icons.arrow_forward_ios, size: 10, color: titleColor),
             ],
-          ),
-        ],
+            const SizedBox(height: 12),
+            Text(
+              amount,
+              style: TextStyle(
+                color: amountColor,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text(
+                  'View details',
+                  style: TextStyle(
+                    color: titleColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.arrow_forward_ios, size: 10, color: titleColor),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
+  // 💡 Overview Tile Builder
   Widget _buildOverviewTile({
     required IconData icon,
     required String title,
@@ -547,7 +864,10 @@ class AdminDashboard extends StatelessWidget {
       ),
       child: ListTile(
         onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 2,
+        ),
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(

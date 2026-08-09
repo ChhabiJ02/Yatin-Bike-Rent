@@ -32,7 +32,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   final _dateController = TextEditingController();
   final _fyearController = TextEditingController();
   final _partyNameController = TextEditingController();
-  final _addressController = TextEditingController();
   final _phoneController = TextEditingController();
   final _aadharController = TextEditingController();
   final _licenseController = TextEditingController();
@@ -205,7 +204,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       final customer = Customer.fromFirestore(doc);
 
       _partyNameController.text = customer.name;
-      _addressController.text = customer.address;
       _phoneController.text = customer.smsPhone;
       _aadharController.text = customer.aadharNo;
       _licenseController.text = customer.licenceNo;
@@ -290,7 +288,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     _dateController.dispose();
     _fyearController.dispose();
     _partyNameController.dispose();
-    _addressController.dispose();
     _phoneController.dispose();
     _aadharController.dispose();
     _licenseController.dispose();
@@ -340,15 +337,12 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               _buildTextField(
                 'Party Name',
                 _partyNameController,
-                required: true,
               ),
               _buildTextField(
                 'Phone',
                 _phoneController,
                 keyboardType: TextInputType.phone,
-                required: true,
               ),
-              _buildTextField('Address', _addressController, maxLines: 2),
               _buildTextField('Aadhar No.', _aadharController),
               _buildTextField('License No.', _licenseController),
               const SizedBox(height: 24),
@@ -490,62 +484,35 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     return Column(
       children: [
         FormImagePicker(
-          label: 'Aadhaar Front',
-          imageUrl: _customerDocuments?.aadhaarFront,
-          folder: 'documents/${widget.custCode ?? 'new'}/aadhaar',
-          isRequired: true,
+          label: 'Aadhaar / License - Front',
+          imageUrl: _customerDocuments?.idFront,
+          folder: 'documents/${widget.custCode ?? 'new'}/documents',
           onImageSelected: (url) {
             setState(() {
-              _customerDocuments = (_customerDocuments ?? CustomerDocuments())
-                  .copyWith(aadhaarFront: url);
+              _customerDocuments =
+                  (_customerDocuments ?? CustomerDocuments()).copyWith(idFront: url);
             });
           },
         ),
         FormImagePicker(
-          label: 'Aadhaar Back',
-          imageUrl: _customerDocuments?.aadhaarBack,
-          folder: 'documents/${widget.custCode ?? 'new'}/aadhaar',
-          isRequired: true,
+          label: 'Aadhaar / License - Back',
+          imageUrl: _customerDocuments?.idBack,
+          folder: 'documents/${widget.custCode ?? 'new'}/documents',
           onImageSelected: (url) {
             setState(() {
-              _customerDocuments = (_customerDocuments ?? CustomerDocuments())
-                  .copyWith(aadhaarBack: url);
+              _customerDocuments =
+                  (_customerDocuments ?? CustomerDocuments()).copyWith(idBack: url);
             });
           },
         ),
         FormImagePicker(
-          label: 'License Front',
-          imageUrl: _customerDocuments?.licenseFront,
-          folder: 'documents/${widget.custCode ?? 'new'}/license',
-          isRequired: true,
+          label: 'Customer with Vehicle/Ticket',
+          imageUrl: _customerDocuments?.customerPhoto,
+          folder: 'documents/${widget.custCode ?? 'new'}/customer',
           onImageSelected: (url) {
             setState(() {
               _customerDocuments = (_customerDocuments ?? CustomerDocuments())
-                  .copyWith(licenseFront: url);
-            });
-          },
-        ),
-        FormImagePicker(
-          label: 'License Back',
-          imageUrl: _customerDocuments?.licenseBack,
-          folder: 'documents/${widget.custCode ?? 'new'}/license',
-          isRequired: true,
-          onImageSelected: (url) {
-            setState(() {
-              _customerDocuments = (_customerDocuments ?? CustomerDocuments())
-                  .copyWith(licenseBack: url);
-            });
-          },
-        ),
-        FormImagePicker(
-          label: 'Customer with Vehicle',
-          imageUrl: _customerDocuments?.customerVehiclePhoto,
-          folder: 'documents/${widget.custCode ?? 'new'}/vehicle',
-          isRequired: true,
-          onImageSelected: (url) {
-            setState(() {
-              _customerDocuments = (_customerDocuments ?? CustomerDocuments())
-                  .copyWith(customerVehiclePhoto: url);
+                  .copyWith(customerPhoto: url);
             });
           },
         ),
@@ -1038,7 +1005,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         days: _daysController.text.trim(),
         rate: _rateController.text.trim(),
         billAmount: _billAmountController.text.trim(),
-        address: _addressController.text.trim(),
         smsPhone: _phoneController.text.trim(),
         aadharNo: _aadharController.text.trim(),
         licenceNo: _licenseController.text.trim(),

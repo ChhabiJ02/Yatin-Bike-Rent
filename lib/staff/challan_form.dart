@@ -448,62 +448,38 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
     return Column(
       children: [
         FormImagePicker(
-          label: 'Aadhaar Front',
-          imageUrl: _customerDocuments?.aadhaarFront,
-          folder: 'aadhaar',
+          label: 'Aadhaar / License - Front',
+          imageUrl: _customerDocuments?.idFront,
+          folder: 'documents',
           isRequired: true,
           onImageSelected: (url) {
             setState(() {
-              _customerDocuments = (_customerDocuments ?? CustomerDocuments())
-                  .copyWith(aadhaarFront: url);
+              _customerDocuments =
+                  (_customerDocuments ?? CustomerDocuments()).copyWith(idFront: url);
             });
           },
         ),
         FormImagePicker(
-          label: 'Aadhaar Back',
-          imageUrl: _customerDocuments?.aadhaarBack,
-          folder: 'aadhaar',
+          label: 'Aadhaar / License - Back',
+          imageUrl: _customerDocuments?.idBack,
+          folder: 'documents',
           isRequired: true,
           onImageSelected: (url) {
             setState(() {
-              _customerDocuments = (_customerDocuments ?? CustomerDocuments())
-                  .copyWith(aadhaarBack: url);
+              _customerDocuments =
+                  (_customerDocuments ?? CustomerDocuments()).copyWith(idBack: url);
             });
           },
         ),
         FormImagePicker(
-          label: 'License Front',
-          imageUrl: _customerDocuments?.licenseFront,
-          folder: 'license',
+          label: 'Customer with Vehicle/Ticket',
+          imageUrl: _customerDocuments?.customerPhoto,
+          folder: 'customer',
           isRequired: true,
           onImageSelected: (url) {
             setState(() {
               _customerDocuments = (_customerDocuments ?? CustomerDocuments())
-                  .copyWith(licenseFront: url);
-            });
-          },
-        ),
-        FormImagePicker(
-          label: 'License Back',
-          imageUrl: _customerDocuments?.licenseBack,
-          folder: 'license',
-          isRequired: true,
-          onImageSelected: (url) {
-            setState(() {
-              _customerDocuments = (_customerDocuments ?? CustomerDocuments())
-                  .copyWith(licenseBack: url);
-            });
-          },
-        ),
-        FormImagePicker(
-          label: 'Customer with Vehicle',
-          imageUrl: _customerDocuments?.customerVehiclePhoto,
-          folder: 'vehicle',
-          isRequired: true,
-          onImageSelected: (url) {
-            setState(() {
-              _customerDocuments = (_customerDocuments ?? CustomerDocuments())
-                  .copyWith(customerVehiclePhoto: url);
+                  .copyWith(customerPhoto: url);
             });
           },
         ),

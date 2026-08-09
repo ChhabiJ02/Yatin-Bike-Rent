@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../models/customer.dart';
 import '../screens/challan_entry_screen.dart';
@@ -8,7 +9,9 @@ import '../screens/payment_record_screen.dart';
 import '../theme/app_theme.dart';
 
 class CustomerBookingsScreen extends StatefulWidget {
-  const CustomerBookingsScreen({super.key});
+  final String? filterType; // Can be 'todays_bookings' or 'todays_returns'
+
+  const CustomerBookingsScreen({super.key, this.filterType});
 
   @override
   State<CustomerBookingsScreen> createState() => _CustomerBookingsScreenState();
@@ -33,6 +36,36 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  // Helper function to check if a given date is today
+  bool _isToday(dynamic dateField) {
+    if (dateField == null) return false;
+    DateTime? date;
+
+    if (dateField is Timestamp) {
+      date = dateField.toDate();
+    } else if (dateField is String) {
+      try {
+        // Handles formats like 'dd-MM-yyyy HH:mm:ss' or 'dd-MM-yyyy'
+        if (dateField.length > 10) {
+          date = DateFormat('dd-MM-yyyy HH:mm:ss').parse(dateField);
+        } else {
+          date = DateFormat('dd-MM-yyyy').parse(dateField);
+        }
+      } catch (e) {
+        // Fallback for ISO 8601 format
+        date = DateTime.tryParse(dateField);
+      }
+    } else if (dateField is DateTime) {
+      date = dateField;
+    }
+
+    if (date == null) return false;
+    final now = DateTime.now();
+    return date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day;
   }
 
   void _openEntryForm({String? custCode}) {
@@ -93,15 +126,27 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Determine AppBar Title based on the filterType
+    String appBarTitle;
+    if (widget.filterType == 'todays_bookings') {
+      appBarTitle = "Today's Bookings";
+    } else if (widget.filterType == 'todays_returns') {
+      appBarTitle = "Today's Returns";
+    } else if (widget.filterType == 'pending_payments') {
+      appBarTitle = "Pending Payments";
+    } else {
+      appBarTitle = "Customer Bookings";
+    }
+
     return Scaffold(
       backgroundColor: AppColors.navy,
       appBar: AppBar(
         foregroundColor: Colors.white,
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
-          'Customer Entries',
-          style: TextStyle(
+        title: Text(
+          appBarTitle,
+          style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
             color: Colors.white,
@@ -112,47 +157,48 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Filter Chips Horizontal List
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: _filters.map((filter) {
-                  final isSelected = _selectedFilter == filter;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8.0),
-                    child: ChoiceChip(
-                      label: Text(
-                        filter,
-                        style: TextStyle(
-                          color: isSelected ? Colors.white : Colors.black,
-                          fontWeight:
-                              isSelected ? FontWeight.bold : FontWeight.w600,
-                          fontSize: 13,
+            // Conditionally show filter chips only when not in a filtered view
+            if (widget.filterType == null)
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: _filters.map((filter) {
+                    final isSelected = _selectedFilter == filter;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: ChoiceChip(
+                        label: Text(
+                          filter,
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : Colors.black,
+                            fontWeight:
+                                isSelected ? FontWeight.bold : FontWeight.w600,
+                            fontSize: 13,
+                          ),
                         ),
-                      ),
-                      selected: isSelected,
-                      selectedColor: AppColors.ember,
-                      backgroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        side: BorderSide(
-                          color: isSelected
-                              ? AppColors.ember
-                              : Colors.white.withAlpha(200),
+                        selected: isSelected,
+                        selectedColor: AppColors.ember,
+                        backgroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: BorderSide(
+                            color: isSelected
+                                ? AppColors.ember
+                                : Colors.white.withAlpha(200),
+                          ),
                         ),
+                        showCheckmark: false,
+                        onSelected: (selected) {
+                          if (selected) {
+                            setState(() => _selectedFilter = filter);
+                          }
+                        },
                       ),
-                      showCheckmark: false,
-                      onSelected: (selected) {
-                        if (selected) {
-                          setState(() => _selectedFilter = filter);
-                        }
-                      },
-                    ),
-                  );
-                }).toList(),
+                    );
+                  }).toList(),
+                ),
               ),
-            ),
 
             // Search Bar
             Padding(
@@ -204,23 +250,65 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                     );
                     final name = customer.name.toLowerCase();
                     final code = customer.custCode.toLowerCase();
-                    final returnStatus = customer.vehicleHandover?['returnStatus'] ?? 'Pending';
-                    final paymentStatus = customer.vehicleHandover?['paymentStatus'] ?? '';
 
+                    // --- Search Filter ---
                     final matchesSearch = _searchQuery.isEmpty ||
                         name.contains(_searchQuery.toLowerCase()) ||
                         code.contains(_searchQuery.toLowerCase());
 
-                    bool matchesFilter = true;
-                    if (_selectedFilter == 'Return Pending') {
-                      matchesFilter = returnStatus != 'Returned';
-                    } else if (_selectedFilter == 'Returned') {
-                      matchesFilter = returnStatus == 'Returned';
-                    } else if (_selectedFilter == 'Received') {
-                      matchesFilter = paymentStatus == 'Received';
+                    if (!matchesSearch) return false;
+
+                    // --- Pre-defined Filter (from dashboard) ---
+                    if (widget.filterType != null) {
+                      if (widget.filterType == 'todays_bookings') {
+                        return _isToday(customer.createdAt) || _isToday(customer.sDate);
+                      }
+                      if (widget.filterType == 'todays_returns') {
+                        final handover = customer.vehicleHandover;
+                        final isReturned = handover?['returnStatus'] == 'Returned';
+                        if (!isReturned) return false;
+
+                        final returnDate = handover?['vehicleReturnDate'];
+                        final fallbackDate = customer.createdAt ?? customer.sDate;
+                        
+                        return _isToday(
+                          (returnDate != null && returnDate.toString().isNotEmpty)
+                              ? returnDate
+                              : fallbackDate,
+                        );
+                      }
+                      if (widget.filterType == 'pending_payments') {
+                        final billAmountStr = customer.billAmount;
+                        final double billAmount =
+                            double.tryParse(billAmountStr) ?? 0.0;
+
+                        double paymentAmount = 0.0;
+                        final paymentMap = customer.payment;
+                        if (paymentMap != null) {
+                          final paStr = paymentMap['paymentAmount'] as String?;
+                          paymentAmount = double.tryParse(paStr ?? '') ?? 0.0;
+                        }
+
+                        final double pending = billAmount - paymentAmount;
+                        return pending > 0;
+                      }
                     }
 
-                    return matchesSearch && matchesFilter;
+                    // --- Chip Filter (only if no pre-defined filter) ---
+                    final returnStatus = customer.vehicleHandover?['returnStatus'] ?? 'Pending';
+                    final paymentStatus = customer.vehicleHandover?['paymentStatus'] ?? '';
+                    
+                    bool matchesChipFilter = true;
+                    if (_selectedFilter == 'Return Pending') {
+                      matchesChipFilter = returnStatus != 'Returned';
+                    } else if (_selectedFilter == 'Returned') {
+                      matchesChipFilter = returnStatus == 'Returned';
+                    } else if (_selectedFilter == 'Received') {
+                      matchesChipFilter = paymentStatus == 'Received';
+                    }
+                    
+                    return matchesChipFilter;
+
                   }).toList();
 
                   if (customers.isEmpty) {

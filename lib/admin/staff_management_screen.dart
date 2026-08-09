@@ -33,7 +33,6 @@ class UserRoleManager extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: AppTheme.softCard(
         bgColor: Colors.white, // This is now a valid parameter
-        borderColor: Colors.transparent, // This is now a valid parameter
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

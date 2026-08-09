@@ -1,140 +1,113 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  static const ink = Color(0xFF101525);
-  static const navy = Color(0xFF181D33);
+  // 🟢 Main Green Theme Colors
+  static const primaryGreen = Color(0xFF0F8A4B);
+  static const darkGreen = Color(0xFF074726);
+  static const lightGreenBg = Color(0xFFF0FDF4);
+  static const mint = Color(0xFF00FF88);
   
-  // 💡 Orange (Ember) ની જગ્યાએ Indigo Accent કલર
-  static const ember = Color(0xFF312E81); 
-  static const amber = Color.fromARGB(255, 212, 151, 59);
-  static const mint = Color(0xFF21C7A8);
-  static const sky = Color(0xFF38A5FF);
-  static const paper = Color(0xFFF6F7FB);
-  static const card = Color(0xFFFFFFFF);
-  static const muted = Color.fromARGB(255, 83, 87, 99);
+  // 🟢 Missing Variables Added (Green Theme Match)
+  static const amber = Color(0xFFD97706); // Warm Amber / Orange for Pending status
+  static const navy = Color(0xFF0F8A4B);  // Replacing Navy with Primary Green
+  
+  // ⚪ Canvas & Neutral Colors
+  static const paper = Color(0xFFF8FAFC);
+  static const card = Colors.white;
+  static const ink = Color(0xFF1E293B);
+  static const muted = Color(0xFF64748B);
 
-  // 💡 Splash Gradient માં પણ Indigo Tint સેટ કર્યો
+  // 🟢 Accent
+  static const ember = Color(0xFF0F8A4B); 
+  static const sky = Color(0xFF38A5FF);
+
+  // 🌈 Gradients
   static const splashGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [ink, navy, Color(0xFF312E81), Color(0xFF312E81)],
-    stops: [0, 0.34, 0.68, 1],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [primaryGreen, darkGreen],
   );
 
   static const pageGradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
-    colors: [ink, Color(0xFF272D49), paper],
-    stops: [0, 0.42, 1],
+    colors: [primaryGreen, lightGreenBg, paper],
+    stops: [0.0, 0.35, 1.0],
   );
 
-  // 💡 નવું Light Indigo & Cyan Attractive Hero Gradient
   static const heroGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF312E81), Color(0xFFCFFAFE)],
+    colors: [primaryGreen, darkGreen],
   );
 }
 
 class AppTheme {
   static ThemeData get light {
-    final base = ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor:Color(0xFF312E81),
-        primary: Color(0xFF312E81),
-        secondary: AppColors.mint,
-        surface: AppColors.card,
-      ),
+    return ThemeData(
+      primaryColor: AppColors.primaryGreen,
       scaffoldBackgroundColor: AppColors.paper,
-      fontFamily: 'Roboto',
-    );
-
-    return base.copyWith(
+      colorScheme: const ColorScheme.light(
+        primary: AppColors.primaryGreen,
+        secondary: AppColors.ember,
+        surface: AppColors.card,
+        onSurface: AppColors.ink,
+        error: Colors.red,
+        onPrimary: Colors.white,
+        onSecondary: Colors.white,
+        onError: Colors.white,
+        background: AppColors.paper,
+        onBackground: AppColors.ink,
+      ),
       appBarTheme: const AppBarTheme(
-        centerTitle: false,
+        backgroundColor: AppColors.primaryGreen,
+        foregroundColor: Colors.white,
         elevation: 0,
-        backgroundColor: Colors.transparent,
-        foregroundColor: AppColors.ink,
-        titleTextStyle: TextStyle(
-          color: AppColors.ink,
-          fontSize: 20,
-          fontWeight: FontWeight.w800,
-        ),
+      ),
+      textTheme: const TextTheme(
+        bodyLarge: TextStyle(color: AppColors.ink),
+        bodyMedium: TextStyle(color: AppColors.muted),
       ),
       cardTheme: CardThemeData(
-        color: AppColors.card,
         elevation: 0,
-        margin: const EdgeInsets.symmetric(vertical: 10),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: Colors.grey.shade300, width: 1),
+        ),
+        clipBehavior: Clip.antiAlias,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(
-          vertical: 18,
-          horizontal: 18,
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: Colors.black.withAlpha(15)),
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color:Color(0xFF312E81), width: 1.8),
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: AppColors.primaryGreen, width: 2),
         ),
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor:Color(0xFF312E81),
-          foregroundColor: Colors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
-          textStyle: const TextStyle(fontWeight: FontWeight.w800),
-        ),
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.ink,
-          side: BorderSide(color: AppColors.ink.withAlpha(30)),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
-        ),
-      ),
-      chipTheme: base.chipTheme.copyWith(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        side: BorderSide.none,
       ),
     );
   }
 
-  static BoxDecoration softCard({
-    Color bgColor = AppColors.card,
-    Color? borderColor,
-  }) {
-    final bColor = borderColor ?? Colors.black.withAlpha(10);
+  static BoxDecoration softCard({Color? bgColor}) {
     return BoxDecoration(
-      color: bgColor,
-      borderRadius: BorderRadius.circular(24),
-      border: borderColor == Colors.transparent
-          ? null
-          : Border.all(color: bColor),
+      color: bgColor ?? AppColors.card,
+      borderRadius: BorderRadius.circular(12),
       boxShadow: [
         BoxShadow(
-          color: AppColors.ink.withAlpha(20),
-          blurRadius: 26,
-          offset: const Offset(0, 14),
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 10,
+          offset: const Offset(0, 4),
         ),
       ],
+      border: Border.all(color: Colors.grey.shade200, width: 1),
     );
   }
 }
