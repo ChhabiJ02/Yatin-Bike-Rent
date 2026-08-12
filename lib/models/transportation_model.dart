@@ -10,6 +10,7 @@ class Transportation {
   final String dropLocation;
   final String stay;
   final int kms;
+  final String startingKm;
 
   Transportation({
     this.dispPaper = '',
@@ -23,6 +24,7 @@ class Transportation {
     this.dropLocation = '',
     this.stay = '',
     this.kms = 0,
+    this.startingKm = '',
   });
 
   Transportation copyWith({
@@ -37,6 +39,7 @@ class Transportation {
     String? dropLocation,
     String? stay,
     int? kms,
+    String? startingKm,
   }) {
     return Transportation(
       dispPaper: dispPaper ?? this.dispPaper,
@@ -50,6 +53,7 @@ class Transportation {
       dropLocation: dropLocation ?? this.dropLocation,
       stay: stay ?? this.stay,
       kms: kms ?? this.kms,
+      startingKm: startingKm ?? this.startingKm,
     );
   }
 
@@ -66,6 +70,7 @@ class Transportation {
       'dropLocation': dropLocation,
       'stay': stay,
       'kms': kms,
+      'startingKm': startingKm,
     };
   }
 
@@ -82,6 +87,7 @@ class Transportation {
       dropLocation: map['dropLocation'] ?? '',
       stay: map['stay'] ?? '',
       kms: map['kms'] ?? 0,
+      startingKm: map['startingKm']?.toString() ?? '',
     );
   }
 
@@ -97,5 +103,7 @@ class Transportation {
         dropLocation.isEmpty &&
         stay.isEmpty &&
         kms == 0;
+    // Note: startingKm is intentionally omitted from isEmpty check
+    // to allow saving transportation details even if only KM is entered.
   }
 }

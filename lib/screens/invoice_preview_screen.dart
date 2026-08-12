@@ -50,6 +50,7 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
       if (_challanData!['payment'] != null) {
         _payment = PaymentDetails.fromMap(Map<String, dynamic>.from(_challanData!['payment']));
       }
+      await _generateInvoice();
     }
     if (mounted) {
       setState(() => _isLoading = false);
@@ -111,9 +112,6 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
             _buildRow('Pickup Location', vh?.vehiclePickupLocation ?? ''),
             _buildRow('Return Location', vh?.vehicleReturnLocation ?? ''),
             const Divider(),
-            _buildRow('Rental From', '${vh?.vehicleGivenDate ?? ''} ${vh?.vehicleGivenTime ?? ''}'),
-            _buildRow('Rental To', '${vh?.vehicleReturnDate ?? ''} ${vh?.vehicleReturnTime ?? ''}'),
-            const Divider(),
             _buildRow('Start KM', km?.startKM.toString() ?? '0'),
             _buildRow('End KM', km?.endKM.toString() ?? '0'),
             _buildRow('Total KM', km?.totalKM.toString() ?? '0'),
@@ -161,63 +159,11 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: AppColors.heroGradient,
-            ),
-            child: ElevatedButton.icon(
-              onPressed: _isGenerating ? null : _generateInvoice,
-              icon: _isGenerating
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.picture_as_pdf),
-              label: Text(_isGenerating ? 'Generating...' : 'Generate Invoice PDF'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _pdfBytes != null ? _previewPdf : null,
-                icon: const Icon(Icons.visibility),
-                label: const Text('Preview'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.ember,
-                  side: const BorderSide(color: AppColors.ember),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _pdfBytes != null ? _downloadPdf : null,
-                icon: const Icon(Icons.download),
-                label: const Text('Download'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.ember,
-                  side: const BorderSide(color: AppColors.ember),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
+        // Download button
         OutlinedButton.icon(
-          onPressed: _pdfBytes != null ? _shareOnWhatsApp : null,
-          //onPressed: _pdfBytes != null ? _sharePdf : null,
-          icon: const Icon(Icons.share),
-          label: const Text('Share PDF'),
+          onPressed: _pdfBytes != null ? _downloadPdf : null,
+          icon: const Icon(Icons.download),
+          label: const Text('Download PDF'),
           style: OutlinedButton.styleFrom(
             foregroundColor: AppColors.ember,
             side: const BorderSide(color: AppColors.ember),
@@ -225,9 +171,9 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
           ),
         ),
         const SizedBox(height: 12),
+        // Send via WhatsApp button
         OutlinedButton.icon(
-          onPressed: _pdfBytes != null ? _sharePdf : null,          
-          //onPressed: _pdfBytes != null ? _shareOnWhatsApp : null,
+          onPressed: _pdfBytes != null ? _shareOnWhatsApp : null,
           icon: const Icon(Icons.chat),
           label: const Text('Send via WhatsApp'),
           style: OutlinedButton.styleFrom(
@@ -264,7 +210,9 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
   }
 
   Future<void> _generateInvoice() async {
-    setState(() => _isGenerating = true);
+    if (mounted) {
+      setState(() => _isGenerating = true);
+    }
     try {
       final invoice = Invoice(
         invoiceNumber: widget.custCode,
@@ -273,10 +221,6 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
         phoneNumber: _challanData?['smsPhone'] ?? '',
         vehicleName: _challanData?['vehicleName'] ?? '',
         vehicleNumber: _challanData?['vehicleNumber'] ?? '',
-        rentalStartDate: _vehicleHandover?.vehicleGivenDate ?? '',
-        rentalStartTime: _vehicleHandover?.vehicleGivenTime ?? '',
-        rentalEndDate: _vehicleHandover?.vehicleReturnDate ?? '',
-        rentalEndTime: _vehicleHandover?.vehicleReturnTime ?? '',
         startKM: _kilometerDetails?.startKM ?? 0,
         endKM: _kilometerDetails?.endKM ?? 0,
         totalKM: _kilometerDetails?.totalKM ?? 0,
@@ -304,7 +248,9 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
         );
       }
     }
-    if (mounted) setState(() => _isGenerating = false);
+    if (mounted) {
+      setState(() => _isGenerating = false);
+    }
   }
 
   Future<void> _sharePdf() async {
@@ -326,20 +272,30 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
   }
 
   Future<void> _shareOnWhatsApp() async {
-    final phone = _challanData?['smsPhone'] ?? '';
-    if (phone.isEmpty) {
+    if (_pdfBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No phone number available')),
+        const SnackBar(content: Text('PDF not generated yet.')),
       );
       return;
     }
-    final text = 'Invoice for ${widget.custCode} - ${_challanData?['partyName']}';
-    final uri = Uri.parse('whatsapp://send?phone=$phone&text=$text');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
-      final webUri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(text)}');
-      await launchUrl(webUri, mode: LaunchMode.externalApplication);
+
+    // Ensure the file is saved before sharing
+    _pdfPath ??= await InvoiceService.saveInvoicePdfToFile(
+      _pdfBytes!,
+      invoiceNumber: widget.custCode,
+    );
+
+    if (_pdfPath != null) {
+      final text = 'Dear ${_challanData?['partyName']},\n\nPlease find attached the invoice for your rental.\nInvoice No: ${widget.custCode}\n\nThank you for choosing StreetBike Rental!';
+      // Using Share.shareXFiles to open the native share sheet with the PDF and text.
+      // This allows the user to select WhatsApp and send the file.
+      await Share.shareXFiles(
+        [XFile(_pdfPath!)],
+        text: text,
+      );
+    } else if (kIsWeb) {
+      // Fallback for web to just share the PDF.
+      await Printing.sharePdf(bytes: _pdfBytes!, filename: 'invoice_${widget.custCode}.pdf');
     }
   }
 }

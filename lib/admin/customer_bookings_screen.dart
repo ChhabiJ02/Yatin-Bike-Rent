@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:street_bike_rental/services/challan_service.dart';
+import 'package:flutter/services.dart';
 import 'package:street_bike_rental/models/customer_documents.dart';
 import 'package:intl/intl.dart';
 
@@ -10,7 +12,7 @@ import '../screens/payment_record_screen.dart';
 import '../theme/app_theme.dart';
 
 class CustomerBookingsScreen extends StatefulWidget {
-  final String? filterType; // Can be 'todays_bookings' or 'todays_returns'
+  final String? filterType;
 
   const CustomerBookingsScreen({super.key, this.filterType});
 
@@ -39,7 +41,6 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
     super.dispose();
   }
 
-  // Helper function to check if a given date is today
   bool _isToday(dynamic dateField) {
     if (dateField == null) return false;
     DateTime? date;
@@ -48,14 +49,12 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
       date = dateField.toDate();
     } else if (dateField is String) {
       try {
-        // Handles formats like 'dd-MM-yyyy HH:mm:ss' or 'dd-MM-yyyy'
         if (dateField.length > 10) {
           date = DateFormat('dd-MM-yyyy HH:mm:ss').parse(dateField);
         } else {
           date = DateFormat('dd-MM-yyyy').parse(dateField);
         }
       } catch (e) {
-        // Fallback for ISO 8601 format
         date = DateTime.tryParse(dateField);
       }
     } else if (dateField is DateTime) {
@@ -78,56 +77,391 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
     );
   }
 
-  Future<void> _updateReturnStatus(String custCode, String status) async {
-    final confirmed = await showDialog<bool>(
+  Future<void> _showReturnDialog(String custCode) async {
+    final dropDateController = TextEditingController(
+        text: DateFormat('dd-MM-yyyy').format(DateTime.now()));
+    final dropTimeController =
+        TextEditingController(text: TimeOfDay.now().format(context));
+    final dropLocationController = TextEditingController();
+    final endOdometerController = TextEditingController();
+    DateTime selectedDate = DateTime.now();
+    TimeOfDay selectedTime = TimeOfDay.now();
+
+    await showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Mark as $status?'),
-        content: Text('This will update the vehicle return status to $status.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+      isScrollControlled: true,
+      builder: (BuildContext ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+            top: 20,
+            left: 20,
+            right: 20,
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              status,
-              style: const TextStyle(fontWeight: FontWeight.bold),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Vehicle Return Details',
+                    style: Theme.of(ctx).textTheme.headlineSmall),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: dropDateController,
+                  decoration: const InputDecoration(
+                      labelText: 'Drop Date',
+                      suffixIcon: Icon(Icons.calendar_today)),
+                  readOnly: true,
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                        context: ctx,
+                        initialDate: selectedDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2030));
+                    if (picked != null) {
+                      selectedDate = picked;
+                      dropDateController.text =
+                          DateFormat('dd-MM-yyyy').format(picked);
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: dropTimeController,
+                  decoration: const InputDecoration(
+                      labelText: 'Drop Time',
+                      suffixIcon: Icon(Icons.access_time)),
+                  readOnly: true,
+                  onTap: () async {
+                    final picked = await showTimePicker(
+                        context: ctx, initialTime: selectedTime);
+                    if (picked != null && mounted) {
+                      selectedTime = picked;
+                      dropTimeController.text = picked.format(ctx);
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: dropLocationController,
+                  decoration:
+                      const InputDecoration(labelText: 'Drop Location'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: endOdometerController,
+                  decoration: const InputDecoration(
+                      labelText: 'Ending Odometer Reading (KM)'),
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(50),
+                    backgroundColor: AppColors.primaryGreen,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () async {
+                    final newDropDate = dropDateController.text;
+                    final newDropTime = dropTimeController.text;
+                    final newDropLocation = dropLocationController.text;
+                    final newKmEndingNumber =
+                        int.tryParse(endOdometerController.text);
+
+                    if (newKmEndingNumber == null) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(
+                            content: Text(
+                                'Please enter a valid ending odometer reading.')),
+                      );
+                      return;
+                    }
+
+                    try {
+                      final docRef = _customersCollection.doc(custCode);
+                      final doc = await docRef.get();
+                      if (doc.exists) {
+                        final data = doc.data() ?? {};
+                        final handover = Map<String, dynamic>.from(
+                            data['vehicleHandover'] ?? {});
+
+                        // Fetch starting KM from transportation or vehicleHandover
+                        final transportation = Map<String, dynamic>.from(
+                            data['transportation'] ?? {});
+                        final int startingKm = int.tryParse(
+                                transportation['kmStartingNumber']?.toString() ??
+                                transportation['startingKm']?.toString() ??
+                                handover['kmStartingNumber']?.toString() ??
+                                '0') ??
+                            0;
+
+                        final int totalKm = (newKmEndingNumber - startingKm) > 0
+                            ? (newKmEndingNumber - startingKm)
+                            : 0;
+
+                        handover['returnStatus'] = 'Returned';
+                        handover['vehicleReturnDate'] = newDropDate;
+                        handover['vehicleReturnTime'] = newDropTime;
+                        handover['dropLocation'] = newDropLocation;
+                        handover['kmEndingNumber'] = newKmEndingNumber;
+                        handover['kmStartingNumber'] = startingKm;
+                        handover['totalKmRun'] = totalKm;
+                        handover['returnUpdatedAt'] =
+                            FieldValue.serverTimestamp();
+
+                        await docRef.update({
+                          'vehicleHandover': handover,
+                          'returnDate': newDropDate,
+                        });
+
+                        if (mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            const SnackBar(
+                                content: Text(
+                                    'Vehicle marked as Returned successfully!'),
+                                backgroundColor: Colors.green),
+                          );
+                          Navigator.pop(ctx);
+                        }
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(
+                              content: Text(
+                                  'Error marking vehicle as returned: $e'),
+                              backgroundColor: Colors.red),
+                        );
+                      }
+                    }
+                  },
+                  child: const Text('Confirm Return'),
+                ),
+                const SizedBox(height: 20),
+              ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
+  }
 
-    if (confirmed == true && mounted) {
-      try {
-        final docRef = _customersCollection.doc(custCode);
-        final doc = await docRef.get();
-        if (doc.exists) {
-          final data = doc.data() ?? {};
-          final handover = Map<String, dynamic>.from(data['vehicleHandover'] ?? {});
-          handover['returnStatus'] = status;
-          await docRef.update({'vehicleHandover': handover});
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Vehicle marked as $status')),
+  Future<void> _showExtendBookingDialog(Customer customer) async {
+    int extendedDays = 1;
+    final daysController = TextEditingController(text: '1');
+
+    final double basePrice = double.tryParse(customer.billAmount) ?? 0.0;
+    final double perDayRate = double.tryParse(customer.rate) ?? 0.0;
+
+    double newTotal = basePrice + (extendedDays * perDayRate);
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              insetPadding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              title: const Text('Extend Booking',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Current Return: ${customer.returnDate.isNotEmpty ? customer.returnDate : "N/A"}',
+                      style: const TextStyle(color: Colors.black54),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                          iconSize: 32,
+                          icon: const Icon(Icons.remove_circle_outline,
+                              color: AppColors.primaryGreen),
+                          onPressed: () {
+                            int currentDays =
+                                int.tryParse(daysController.text) ?? 1;
+                            if (currentDays > 1) {
+                              daysController.text =
+                                  (currentDays - 1).toString();
+                              setState(() {
+                                extendedDays = currentDays - 1;
+                                newTotal =
+                                    basePrice + (extendedDays * perDayRate);
+                              });
+                            }
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 70,
+                          child: TextFormField(
+                            controller: daysController,
+                            textAlign: TextAlign.center,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: 'Days',
+                              contentPadding:
+                                  const EdgeInsets.symmetric(vertical: 8),
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10)),
+                            ),
+                            onChanged: (value) {
+                              final parsed = int.tryParse(value) ?? 0;
+                              setState(() {
+                                extendedDays = parsed;
+                                newTotal =
+                                    basePrice + (extendedDays * perDayRate);
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          iconSize: 32,
+                          icon: const Icon(Icons.add_circle_outline,
+                              color: AppColors.primaryGreen),
+                          onPressed: () {
+                            int currentDays =
+                                int.tryParse(daysController.text) ?? 0;
+                            daysController.text =
+                                (currentDays + 1).toString();
+                            setState(() {
+                              extendedDays = currentDays + 1;
+                              newTotal =
+                                  basePrice + (extendedDays * perDayRate);
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Center(
+                      child: Text(
+                        'New Total: ₹${newTotal.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primaryGreen),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child:
+                      const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryGreen,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: extendedDays > 0
+                      ? () => _confirmExtension(
+                          dialogContext, customer, extendedDays, newTotal)
+                      : null,
+                  child: const Text('Confirm'),
+                ),
+              ],
             );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmExtension(BuildContext dialogContext, Customer customer,
+      int extendedDays, double newTotal) async {
+    try {
+      DateTime baseDate = DateTime.now();
+
+      if (customer.returnDate.isNotEmpty) {
+        try {
+          if (customer.returnDate.contains('-')) {
+            final parts = customer.returnDate.split(' ')[0].split('-');
+            if (parts.length == 3) {
+              baseDate = DateTime(
+                int.parse(parts[2].length == 2 ? '20${parts[2]}' : parts[2]),
+                int.parse(parts[1]),
+                int.parse(parts[0]),
+              );
+            }
+          } else if (customer.returnDate.contains('/')) {
+            final parts = customer.returnDate.split(' ')[0].split('/');
+            if (parts.length == 3) {
+              baseDate = DateTime(
+                int.parse(parts[2].length == 2 ? '20${parts[2]}' : parts[2]),
+                int.parse(parts[1]),
+                int.parse(parts[0]),
+              );
+            }
+          } else {
+            baseDate =
+                DateTime.tryParse(customer.returnDate) ?? DateTime.now();
           }
+        } catch (_) {
+          baseDate = DateTime.now();
         }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error updating status: $e')),
-          );
-        }
+      }
+
+      final updatedReturnDate = baseDate.add(Duration(days: extendedDays));
+      final formattedNewDate =
+          DateFormat('dd-MM-yyyy').format(updatedReturnDate);
+
+      final int currentDays = int.tryParse(customer.days) ?? 1;
+      final int totalDays = currentDays + extendedDays;
+
+      final docRef = _customersCollection.doc(customer.custCode);
+      final docSnap = await docRef.get();
+      Map<String, dynamic> handover = {};
+      if (docSnap.exists && docSnap.data() != null) {
+        handover = Map<String, dynamic>.from(
+            docSnap.data()!['vehicleHandover'] ?? {});
+      }
+      handover['vehicleReturnDate'] = formattedNewDate;
+
+      await docRef.update({
+        'returnDate': formattedNewDate,
+        'billAmount': newTotal.toStringAsFixed(2),
+        'days': totalDays.toString(),
+        'vehicleHandover': handover,
+      });
+
+      if (mounted) {
+        Navigator.pop(dialogContext);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Extended return date to $formattedNewDate successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Error extending booking: $e'),
+              backgroundColor: Colors.red),
+        );
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Determine AppBar Title based on the filterType
     String appBarTitle;
     if (widget.filterType == 'todays_bookings') {
       appBarTitle = "Today's Bookings";
@@ -147,10 +481,7 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
         elevation: 1,
         title: Text(
           appBarTitle,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         bottom: _buildHeader(context),
       ),
@@ -158,11 +489,7 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Conditionally show filter chips only when not in a filtered view
-            if (widget.filterType == null)
-              _buildFilterChips(),
-
-            // Customer List Stream
+            if (widget.filterType == null) _buildFilterChips(),
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
                 stream: _customersCollection
@@ -174,47 +501,50 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                   }
                   if (snapshot.hasError) {
                     return Center(
-                      child: Text('Error: ${snapshot.error}', style: const TextStyle(color: AppColors.muted)),
+                      child: Text('Error: ${snapshot.error}',
+                          style: const TextStyle(color: AppColors.muted)),
                     );
                   }
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                     return const Center(
-                      child: Text('No customer entries found.', style: TextStyle(color: AppColors.muted)),
+                      child: Text('No customer entries found.',
+                          style: TextStyle(color: AppColors.muted)),
                     );
                   }
 
-                  // Filter & Convert Documents
                   final customers = snapshot.data!.docs.where((doc) {
                     final customer = Customer.fromFirestore(
                       doc as DocumentSnapshot<Map<String, dynamic>>,
                     );
-                    final vehicleNumber = (customer.vehicleHandover?['vehicleNumber'] ?? '').toLowerCase();
                     final name = customer.name.toLowerCase();
                     final code = customer.custCode.toLowerCase();
+                    final vehicleNo = (customer.vehicleHandover?['vehicleNumber'] ?? '').toString().toLowerCase();
 
-                    // --- Search Filter ---
                     final matchesSearch = _searchQuery.isEmpty ||
                         name.contains(_searchQuery.toLowerCase()) ||
-                        code.contains(_searchQuery.toLowerCase());
-                        // || vehicleNumber.contains(_searchQuery.toLowerCase());
-                        
+                        code.contains(_searchQuery.toLowerCase()) ||
+                        vehicleNo.contains(_searchQuery.toLowerCase());
+
                     if (!matchesSearch) return false;
 
-                    // --- Pre-defined Filter (from dashboard) ---
                     if (widget.filterType != null) {
                       if (widget.filterType == 'todays_bookings') {
-                        return _isToday(customer.createdAt) || _isToday(customer.sDate);
+                        return _isToday(customer.createdAt) ||
+                            _isToday(customer.sDate);
                       }
                       if (widget.filterType == 'todays_returns') {
                         final handover = customer.vehicleHandover;
-                        final isReturned = handover?['returnStatus'] == 'Returned';
+                        final isReturned =
+                            handover?['returnStatus'] == 'Returned';
                         if (!isReturned) return false;
 
                         final returnDate = handover?['vehicleReturnDate'];
-                        final fallbackDate = customer.createdAt ?? customer.sDate;
-                        
+                        final fallbackDate =
+                            customer.createdAt ?? customer.sDate;
+
                         return _isToday(
-                          (returnDate != null && returnDate.toString().isNotEmpty)
+                          (returnDate != null &&
+                                  returnDate.toString().isNotEmpty)
                               ? returnDate
                               : fallbackDate,
                         );
@@ -236,10 +566,11 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                       }
                     }
 
-                    // --- Chip Filter (only if no pre-defined filter) ---
-                    final returnStatus = customer.vehicleHandover?['returnStatus'] ?? 'Pending';
-                    final paymentStatus = customer.vehicleHandover?['paymentStatus'] ?? '';
-                    
+                    final returnStatus =
+                        customer.vehicleHandover?['returnStatus'] ?? 'Pending';
+                    final paymentStatus =
+                        customer.vehicleHandover?['paymentStatus'] ?? '';
+
                     bool matchesChipFilter = true;
                     if (_selectedFilter == 'Return Pending') {
                       matchesChipFilter = returnStatus != 'Returned';
@@ -248,28 +579,33 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                     } else if (_selectedFilter == 'Received') {
                       matchesChipFilter = paymentStatus == 'Received';
                     }
-                    
-                    return matchesChipFilter;
 
+                    return matchesChipFilter;
                   }).toList();
 
                   if (customers.isEmpty) {
                     return const Center(
-                      child: Text('No matching entries found.', style: TextStyle(color: AppColors.muted)),
+                      child: Text('No matching entries found.',
+                          style: TextStyle(color: AppColors.muted)),
                     );
                   }
 
                   return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
                     itemCount: customers.length,
                     itemBuilder: (context, index) {
                       final doc = customers[index];
+                      final docData = doc.data() as Map<String, dynamic>? ?? {};
                       final customer = Customer.fromFirestore(
                         doc as DocumentSnapshot<Map<String, dynamic>>,
                       );
                       return _CustomerEntryCard(
                         customer: customer,
-                        onStatusChange: _updateReturnStatus,
+                        docData: docData,
+                        onReturn: _showReturnDialog,
+                        onExtendBooking: _showExtendBookingDialog,
+                        onEdit: () =>
+                            _openEntryForm(custCode: customer.custCode),
                       );
                     },
                   );
@@ -281,7 +617,8 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openEntryForm(),
-        label: const Text('New Entry', style: TextStyle(fontWeight: FontWeight.bold)),
+        label: const Text('New Entry',
+            style: TextStyle(fontWeight: FontWeight.bold)),
         icon: const Icon(Icons.add_business),
         backgroundColor: AppColors.ember,
         foregroundColor: Colors.white,
@@ -302,10 +639,12 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
           decoration: InputDecoration(
             hintText: 'Search by Name, Code, or Vehicle No...',
             hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
-            prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.7)),
+            prefixIcon:
+                Icon(Icons.search, color: Colors.white.withOpacity(0.7)),
             filled: true,
             fillColor: Colors.white.withOpacity(0.15),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(30),
               borderSide: BorderSide.none,
@@ -338,7 +677,9 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
                 side: BorderSide(
-                  color: isSelected ? AppColors.primaryGreen : Colors.grey.shade300,
+                  color: isSelected
+                      ? AppColors.primaryGreen
+                      : Colors.grey.shade300,
                 ),
               ),
               showCheckmark: false,
@@ -357,14 +698,23 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
 
 class _CustomerEntryCard extends StatelessWidget {
   final Customer customer;
-  final Function(String custCode, String status)? onStatusChange;
+  final Map<String, dynamic> docData;
+  final Function(Customer customer)? onExtendBooking;
+  final Function(String custCode)? onReturn;
+  final VoidCallback? onEdit;
 
-  const _CustomerEntryCard({required this.customer, this.onStatusChange});
+  const _CustomerEntryCard({
+    required this.customer,
+    required this.docData,
+    this.onExtendBooking,
+    this.onReturn,
+    this.onEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
-    // --- Data Extraction and Null Safety ---
-    final returnStatus = customer.vehicleHandover?['returnStatus'] ?? 'Pending';
+    final returnStatus =
+        customer.vehicleHandover?['returnStatus'] ?? 'Pending';
     final isReturned = returnStatus == 'Returned';
     final customerDocs = customer.customerDocuments != null
         ? CustomerDocuments.fromMap(customer.customerDocuments!)
@@ -373,15 +723,62 @@ class _CustomerEntryCard extends StatelessWidget {
     final vehicleName = customer.vehicleName;
     final vehicleNumber = customer.vehicleHandover?['vehicleNumber'] ?? 'N/A';
 
-    final pickupDate = customer.vehicleHandover?['vehicleGivenDate']?.isNotEmpty == true ? customer.vehicleHandover!['vehicleGivenDate'] : customer.sDate;
-    final pickupTime = customer.vehicleHandover?['vehicleGivenTime']?.isNotEmpty == true ? customer.vehicleHandover!['vehicleGivenTime'] : DateFormat('HH:mm').format(DateTime.now());
-    final returnDate = customer.vehicleHandover?['vehicleReturnDate'] ?? customer.returnDate;
-    final returnTime = customer.vehicleHandover?['vehicleReturnTime'] ?? '';
+    final pickupDate =
+        customer.vehicleHandover?['vehicleGivenDate']?.isNotEmpty == true
+            ? customer.vehicleHandover!['vehicleGivenDate']
+            : customer.sDate;
+    final pickupTime =
+        customer.vehicleHandover?['vehicleGivenTime']?.isNotEmpty == true
+            ? customer.vehicleHandover!['vehicleGivenTime']
+            : DateFormat('HH:mm').format(DateTime.now());
 
+    String returnDate;
+    String returnTime;
+
+    if (isReturned) {
+      returnDate = customer.vehicleHandover?['vehicleReturnDate'] ?? customer.returnDate;
+      returnTime = customer.vehicleHandover?['vehicleReturnTime'] ?? '--';
+    } else {
+      returnDate = customer.returnDate; // Expected return date
+      returnTime = '--';
+    }
+
+    // --- Dynamic Calculation Fixes ---
     final double billAmount = double.tryParse(customer.billAmount) ?? 0.0;
-    final double paidAmount = double.tryParse(customer.payment?['paymentAmount']?.toString() ?? '0.0') ?? 0.0;
-    final double depositAmount = double.tryParse(customer.payment?['depositAmount']?.toString() ?? '0.0') ?? 0.0;
-    final double pendingAmount = (billAmount - paidAmount).clamp(0, double.infinity);
+    
+    // Fetch Paid Amount
+    final double paidAmount = double.tryParse(
+          customer.payment?['paymentAmount']?.toString() ??
+          docData['paidAmount']?.toString() ??
+          '0.0') ?? 0.0;
+
+    // Fetch Deposit Amount
+    final double depositAmount = double.tryParse(
+          docData['deposit']?.toString() ??
+          docData['depositAmount']?.toString() ??
+          customer.payment?['depositAmount']?.toString() ??
+          '0.0') ?? 0.0;
+
+    // Dynamic Pending Calculation
+    final double pendingAmount = (billAmount - paidAmount).clamp(0.0, double.infinity);
+
+    // Dynamic Odometer & KM Calculations
+    final transportation = Map<String, dynamic>.from(docData['transportation'] ?? {});
+    final handover = Map<String, dynamic>.from(docData['vehicleHandover'] ?? {});
+
+    final int startKm = int.tryParse(
+            transportation['kmStartingNumber']?.toString() ??
+            transportation['startingKm']?.toString() ??
+            handover['kmStartingNumber']?.toString() ??
+            '0') ??
+        0;
+
+    final int endKm = int.tryParse(handover['kmEndingNumber']?.toString() ?? '0') ?? 0;
+    
+    int totalKm = int.tryParse(handover['totalKmRun']?.toString() ?? '0') ?? 0;
+    if (totalKm == 0 && endKm > startKm) {
+      totalKm = endKm - startKm;
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -396,181 +793,275 @@ class _CustomerEntryCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // --- Header ---
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 32,
-                  backgroundColor: Colors.grey.shade200,
-                  backgroundImage: (customerDocs.customerPhoto != null && customerDocs.customerPhoto!.isNotEmpty)
-                      ? NetworkImage(customerDocs.customerPhoto!)
-                      : null,
-                  child: (customerDocs.customerPhoto == null || customerDocs.customerPhoto!.isEmpty)
-                      ? Icon(Icons.person, size: 36, color: Colors.grey.shade400)
-                      : null,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        customer.name.isNotEmpty ? customer.name : 'N/A',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.ink),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.phone, size: 14, color: AppColors.muted),
-                          const SizedBox(width: 4),
-                          Text(
-                            customer.smsPhone.isNotEmpty ? customer.smsPhone : 'N/A',
-                            style: const TextStyle(fontSize: 13, color: AppColors.muted),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.topRight,
-                  child: _ReturnStatusBadge(status: returnStatus),
-                ),
-              ],
-            ),
-          ),
-
-          // --- Vehicle & Dates ---
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 90,
-                  height: 90,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                    image: customerDocs.customerPhoto != null
-                        ? DecorationImage(image: NetworkImage(customerDocs.customerPhoto!), fit: BoxFit.cover)
-                        : null,
-                  ),
-                  child: customerDocs.customerPhoto == null
-                      ? const Icon(Icons.directions_bike, color: AppColors.muted, size: 40)
-                      : null,
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(vehicleName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                      const SizedBox(height: 4),
-                      Text(vehicleNumber, style: const TextStyle(color: AppColors.muted, fontSize: 13)),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          _buildDateColumn('Pickup', pickupDate, pickupTime),
-                          Container(
-                            height: 35,
-                            width: 1,
-                            color: Colors.grey.shade200,
-                            margin: const EdgeInsets.symmetric(horizontal: 12),
-                          ),
-                          _buildDateColumn('Return', returnDate, returnTime.isNotEmpty ? returnTime : DateFormat('HH:mm').format(DateTime.now())),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // --- Add-ons Chips ---
-          if (customer.hasExtraHelmet || customer.hasMobileHolder)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Wrap(
-                spacing: 8.0,
-                runSpacing: 4.0,
-                children: [
-                  if (customer.hasExtraHelmet)
-                    _buildAddonChip('+ Extra Helmet', '₹${customer.extraHelmetCharge.toStringAsFixed(0)}'),
-                  if (customer.hasMobileHolder)
-                    _buildAddonChip('+ Mobile Holder', '₹${customer.mobileHolderCharge.toStringAsFixed(0)}'),
-                ],
-              ),
-            ),
-          // --- Payment Summary ---
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.grey[50],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: IntrinsicHeight(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onEdit,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildPaymentStat('Paid', '₹${billAmount > 0 ? billAmount.toStringAsFixed(0) : paidAmount.toStringAsFixed(0)}', Icons.account_balance_wallet, Colors.green),
-                    const VerticalDivider(width: 1),
-                    _buildPaymentStat('Pending', '₹${pendingAmount.toStringAsFixed(0)}', Icons.hourglass_bottom, Colors.orange),
-                    const VerticalDivider(width: 1),
-                    _buildPaymentStat('Deposit', '₹${depositAmount.toStringAsFixed(0)}', Icons.shield, Colors.blue),
+                    CircleAvatar(
+                      radius: 32,
+                      backgroundColor: Colors.grey.shade200,
+                      backgroundImage: (customerDocs.customerPhoto != null &&
+                              customerDocs.customerPhoto!.isNotEmpty)
+                          ? NetworkImage(customerDocs.customerPhoto!)
+                          : null,
+                      child: (customerDocs.customerPhoto == null ||
+                              customerDocs.customerPhoto!.isEmpty)
+                          ? Icon(Icons.person,
+                              size: 36, color: Colors.grey.shade400)
+                          : null,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            customer.name.isNotEmpty ? customer.name : 'N/A',
+                            style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.ink),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(Icons.phone,
+                                  size: 14, color: AppColors.muted),
+                              const SizedBox(width: 4),
+                              Text(
+                                customer.smsPhone.isNotEmpty
+                                    ? customer.smsPhone
+                                    : 'N/A',
+                                style: const TextStyle(
+                                    fontSize: 13, color: AppColors.muted),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.topRight,
+                      child: _ReturnStatusBadge(status: returnStatus),
+                    ),
                   ],
                 ),
               ),
-            ),
-          ),
-
-          // --- Actions ---
-          const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-            child: IntrinsicHeight(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildActionButton(context, 'Invoice', Icons.receipt_long, () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => InvoicePreviewScreen(custCode: customer.custCode)));
-                  }),
-                  const VerticalDivider(),
-                  _buildActionButton(context, 'Payment', Icons.payment, () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => PaymentRecordScreen(custCode: customer.custCode)));
-                  }),
-                  const VerticalDivider(),
-                  _buildActionButton(context, 'Extend', Icons.sync, () {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Extend feature coming soon!')));
-                  }),
-                  if (!isReturned) ...[
-                    const VerticalDivider(),
-                    _buildActionButton(context, 'Return', Icons.keyboard_return, () {
-                      if (onStatusChange != null) onStatusChange!(customer.custCode, 'Returned');
-                    }),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(vehicleName,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 15)),
+                          const SizedBox(height: 4),
+                          Text(vehicleNumber,
+                              style: const TextStyle(
+                                  color: AppColors.muted, fontSize: 13)),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              _buildDateColumn(
+                                  'Pickup', pickupDate, pickupTime),
+                              Container(
+                                height: 35,
+                                width: 1,
+                                color: Colors.grey.shade200,
+                                margin:
+                                    const EdgeInsets.symmetric(horizontal: 12),
+                              ),
+                              _buildDateColumn('Return', returnDate, returnTime),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
-                ],
+                ),
               ),
-            ),
+
+              // --- KM Details View ---
+              if (startKm > 0 || endKm > 0)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryGreen.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.primaryGreen.withOpacity(0.15)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Start: $startKm KM',
+                            style: const TextStyle(fontSize: 12, color: AppColors.ink)),
+                        Text('End: ${endKm > 0 ? "$endKm KM" : "--"}',
+                            style: const TextStyle(fontSize: 12, color: AppColors.ink)),
+                        Text('Total: $totalKm KM',
+                            style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primaryGreen)),
+                      ],
+                    ),
+                  ),
+                ),
+
+              if (customer.hasExtraHelmet || customer.hasMobileHolder)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Wrap(
+                    spacing: 8.0,
+                    runSpacing: 4.0,
+                    children: [
+                      if (customer.hasExtraHelmet)
+                        _buildAddonChip('+ Extra Helmet',
+                            '₹${customer.extraHelmetCharge.toStringAsFixed(0)}'),
+                      if (customer.hasMobileHolder)
+                        _buildAddonChip('+ Mobile Holder',
+                            '₹${customer.mobileHolderCharge.toStringAsFixed(0)}'),
+                    ],
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: IntrinsicHeight(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildPaymentStat(
+                            'Paid',
+                            '₹${paidAmount.toStringAsFixed(0)}',
+                            Icons.account_balance_wallet,
+                            Colors.green),
+                        const VerticalDivider(width: 1),
+                        _buildPaymentStat(
+                            'Pending',
+                            '₹${pendingAmount.toStringAsFixed(0)}',
+                            Icons.hourglass_bottom,
+                            Colors.orange),
+                        const VerticalDivider(width: 1),
+                        _buildPaymentStat(
+                            'Deposit',
+                            '₹${depositAmount.toStringAsFixed(0)}',
+                            Icons.shield,
+                            Colors.blue),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // --- 4 Action Buttons Row ---
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6.0),
+                child: IntrinsicHeight(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _buildActionButton(
+                          context,
+                          'Invoice',
+                          Icons.receipt_long,
+                          () {
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => InvoicePreviewScreen(
+                                        custCode: customer.custCode)));
+                          },
+                          color: AppColors.primaryGreen,
+                        ),
+                      ),
+                      const VerticalDivider(width: 1),
+                      Expanded(
+                        child: _buildActionButton(
+                          context,
+                          'Payment',
+                          Icons.payment,
+                          () {
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => PaymentRecordScreen(
+                                        custCode: customer.custCode)));
+                          },
+                          color: AppColors.primaryGreen,
+                        ),
+                      ),
+                      const VerticalDivider(width: 1),
+                      Expanded(
+                        child: _buildActionButton(
+                          context,
+                          'Extend',
+                          Icons.sync,
+                          () {
+                            if (onExtendBooking != null) {
+                              onExtendBooking!(customer);
+                            }
+                          },
+                          color: AppColors.primaryGreen,
+                        ),
+                      ),
+                      const VerticalDivider(width: 1),
+                      Expanded(
+                        child: _buildActionButton(
+                          context,
+                          isReturned ? 'Returned' : 'Return',
+                          Icons.published_with_changes_outlined,
+                          isReturned
+                              ? null
+                              : () {
+                                  if (onReturn != null) {
+                                    onReturn!(customer.custCode);
+                                  }
+                                },
+                          color:
+                              isReturned ? Colors.grey : AppColors.primaryGreen,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildAddonChip(String label, String price) {
     return Chip(
-      avatar: const Icon(Icons.add_circle_outline, size: 16, color: AppColors.primaryGreen),
+      avatar: const Icon(Icons.add_circle_outline,
+          size: 16, color: AppColors.primaryGreen),
       label: Text('$label ($price)'),
-      labelStyle: const TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.w600, fontSize: 11),
+      labelStyle: const TextStyle(
+          color: AppColors.primaryGreen,
+          fontWeight: FontWeight.w600,
+          fontSize: 11),
       backgroundColor: AppColors.primaryGreen.withOpacity(0.1),
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -588,45 +1079,82 @@ class _CustomerEntryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(color: AppColors.muted, fontSize: 12, fontWeight: FontWeight.w500)),
+          Text(title,
+              style: const TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500)),
           const SizedBox(height: 2),
-          Text(date.isNotEmpty ? date : DateFormat('dd-MM-yyyy').format(DateTime.now()), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-          Text(time.isNotEmpty ? time : '--:--', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+          Text(
+              date.isNotEmpty
+                  ? date
+                  : DateFormat('dd-MM-yyyy').format(DateTime.now()),
+              style:
+                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          Text(time.isNotEmpty ? time : '--:--',
+              style: const TextStyle(color: AppColors.muted, fontSize: 12)),
         ],
       ),
     );
   }
 
-  Widget _buildPaymentStat(String label, String value, IconData icon, Color color) {
+  Widget _buildPaymentStat(
+      String label, String value, IconData icon, Color color) {
     return Expanded(
       child: Column(
-        children: [Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 20, color: color),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: const TextStyle(fontSize: 11, color: AppColors.muted)),
-                const SizedBox(height: 2),
-                Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
-              ],
-            ),
-          ],
-        )],
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 20, color: color),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.muted)),
+                  const SizedBox(height: 2),
+                  Text(value,
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: color)),
+                ],
+              ),
+            ],
+          )
+        ],
       ),
     );
   }
 
-  Widget _buildActionButton(BuildContext context, String label, IconData icon, VoidCallback onPressed) {
-    return TextButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 18, color: AppColors.primaryGreen),
-      label: Text(label, style: const TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.w600)),
-      style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+  Widget _buildActionButton(
+      BuildContext context, String label, IconData icon, VoidCallback? onPressed,
+      {Color color = AppColors.primaryGreen}) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w600,
+                fontSize: 11,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
       ),
     );
   }

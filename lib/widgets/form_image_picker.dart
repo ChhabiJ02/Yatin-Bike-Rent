@@ -1,23 +1,22 @@
-
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:street_bike_rental/services/storage_service.dart';
-import 'package:street_bike_rental/theme/app_theme.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class FormImagePicker extends StatefulWidget {
   final String label;
   final String? imageUrl;
   final String folder;
-  final bool isRequired;
-  final Function(String? url) onImageSelected;
+  final Function(String?) onImageSelected;
+  final bool isUploading;
 
   const FormImagePicker({
     super.key,
     required this.label,
     this.imageUrl,
     required this.folder,
-    this.isRequired = false,
     required this.onImageSelected,
+    this.isUploading = false,
   });
 
   @override
@@ -25,29 +24,68 @@ class FormImagePicker extends StatefulWidget {
 }
 
 class _FormImagePickerState extends State<FormImagePicker> {
-  final ImagePicker _picker = ImagePicker();
   bool _isUploading = false;
-  String? _currentImageUrl;
-  String? _uploadError;
 
   @override
-  void initState() {
-    super.initState();
-    _currentImageUrl = widget.imageUrl;
+  Widget build(BuildContext context) {
+    final imageUrl = widget.imageUrl;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Image box container
+        Container(
+          width: 100,
+          height: 100,
+          decoration: BoxDecoration(
+            color: Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade300),
+            image: imageUrl != null && imageUrl!.isNotEmpty
+                ? DecorationImage(
+                    image: NetworkImage(imageUrl!),
+                    fit: BoxFit.cover,
+                  )
+                : null,
+          ),
+          child: _isUploading
+              ? const Center(child: CircularProgressIndicator())
+              : (imageUrl == null || imageUrl.isEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.add_a_photo, color: Colors.grey, size: 32),
+                      onPressed: _showImageSourceActionSheet,
+                    )
+                  : null),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          widget.label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: Colors.black87,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        if (!_isUploading && (imageUrl == null || imageUrl.isEmpty))
+          const Text(
+            'No image selected',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 10, color: Colors.grey),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+      ],
+    );
   }
 
-  @override
-  void didUpdateWidget(covariant FormImagePicker oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.imageUrl != oldWidget.imageUrl) {
-      setState(() {
-        _currentImageUrl = widget.imageUrl;
-      });
-    }
-  }
+  Future<void> _showImageSourceActionSheet() async {
+    if (_isUploading) return;
 
-  void _showImageSourceDialog() {
-    showModalBottomSheet(
+    await showModalBottomSheet(
       context: context,
       builder: (BuildContext context) {
         return SafeArea(
@@ -55,7 +93,7 @@ class _FormImagePickerState extends State<FormImagePicker> {
             children: <Widget>[
               ListTile(
                 leading: const Icon(Icons.photo_library),
-                title: const Text('Photo Library'),
+                title: const Text('Choose from Gallery'),
                 onTap: () {
                   Navigator.of(context).pop();
                   _pickAndUploadImage(ImageSource.gallery);
@@ -63,7 +101,7 @@ class _FormImagePickerState extends State<FormImagePicker> {
               ),
               ListTile(
                 leading: const Icon(Icons.photo_camera),
-                title: const Text('Camera'),
+                title: const Text('Take a Photo'),
                 onTap: () {
                   Navigator.of(context).pop();
                   _pickAndUploadImage(ImageSource.camera);
@@ -77,81 +115,31 @@ class _FormImagePickerState extends State<FormImagePicker> {
   }
 
   Future<void> _pickAndUploadImage(ImageSource source) async {
-    setState(() {
-      _isUploading = true;
-      _uploadError = null;
-    });
+    if (_isUploading) return;
+
+    setState(() => _isUploading = true);
 
     try {
-      final XFile? image = await _picker.pickImage(source: source);
-      if (image == null) {
-        setState(() => _isUploading = false);
-        return;
-      }
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(source: source, imageQuality: 70);
 
-      final downloadUrl = await StorageService.uploadImage(
-        image,
-        folder: widget.folder,
-        documentType: widget.label,
-      );
+      if (pickedFile != null) {
+        final imageFile = File(pickedFile.path);
+        final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final storageRef = FirebaseStorage.instance.ref().child('${widget.folder}/$fileName');
 
-      if (downloadUrl != null) {
-        setState(() {
-          _currentImageUrl = downloadUrl;
-        });
-        widget.onImageSelected(_currentImageUrl);
-      } else {
-        throw Exception('Upload failed, URL not received.');
+        final uploadTask = storageRef.putFile(imageFile);
+        final snapshot = await uploadTask.whenComplete(() => null);
+        final downloadUrl = await snapshot.ref.getDownloadURL();
+
+        if (mounted) {
+          widget.onImageSelected(downloadUrl);
+        }
       }
     } catch (e) {
-      setState(() {
-        _uploadError = 'Upload failed. Please try again.';
-      });
-      debugPrint('Image picking/uploading failed: $e');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Image upload failed: $e')));
     } finally {
-      setState(() => _isUploading = false);
+      if (mounted) setState(() => _isUploading = false);
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: _currentImageUrl != null
-                ? Image.network(_currentImageUrl!, width: 50, height: 50, fit: BoxFit.cover)
-                : const Icon(Icons.image, size: 50, color: Colors.grey),
-            title: Text(widget.label),
-            subtitle: _isUploading
-                ? const LinearProgressIndicator()
-                : Text(_currentImageUrl != null ? 'Image uploaded' : 'No image selected'),
-            trailing: IconButton(
-              icon: const Icon(Icons.upload_file, color: AppColors.ember),
-              onPressed: _isUploading ? null : _showImageSourceDialog,
-            ),
-          ),
-          if (_uploadError != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4.0),
-              child: Text(
-                _uploadError!,
-                style: const TextStyle(color: Colors.red, fontSize: 12),
-              ),
-            ),
-          if (widget.isRequired && _currentImageUrl == null)
-            const Padding(
-              padding: EdgeInsets.only(top: 4.0, left: 16.0),
-              child: Text(
-                'This field is required.',
-                style: TextStyle(color: Colors.red, fontSize: 12),
-              ),
-            ),
-        ],
-      ),
-    );
   }
 }

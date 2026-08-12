@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/transportation_model.dart';
 import '../theme/app_theme.dart';
+import 'package:intl/intl.dart';
 
 class TransportationDetailsScreen extends StatefulWidget {
   final Transportation? initialData;
@@ -18,15 +19,10 @@ class _TransportationDetailsScreenState extends State<TransportationDetailsScree
   final dispPaperController = TextEditingController();
   final documentPendingController = TextEditingController();
   final dlrMailController = TextEditingController();
-  final pickupDateController = TextEditingController();
-  final pickupTimeController = TextEditingController();
   final pickupLocationController = TextEditingController();
-  final dropDateController = TextEditingController();
-  final dropTimeController = TextEditingController();
-  final dropLocationController = TextEditingController();
-  final stayController = TextEditingController();
-  final kmsController = TextEditingController();
+  final startingKmController = TextEditingController();
 
+  DateTime? _pickupDateTime;
   @override
   void initState() {
     super.initState();
@@ -40,14 +36,14 @@ class _TransportationDetailsScreenState extends State<TransportationDetailsScree
     dispPaperController.text = data.dispPaper;
     documentPendingController.text = data.documentPending;
     dlrMailController.text = data.dlrMail;
-    pickupDateController.text = data.pickupDate;
-    pickupTimeController.text = data.pickupTime;
     pickupLocationController.text = data.pickupLocation;
-    dropDateController.text = data.dropDate;
-    dropTimeController.text = data.dropTime;
-    dropLocationController.text = data.dropLocation;
-    stayController.text = data.stay;
-    kmsController.text = data.kms > 0 ? data.kms.toString() : '';
+    startingKmController.text = data.startingKm;
+
+    final initialDate = _parseDate(data.pickupDate);
+    final initialTime = _parseTime(data.pickupTime);
+    if (initialDate != null) {
+      _pickupDateTime = DateTime(initialDate.year, initialDate.month, initialDate.day, initialTime?.hour ?? 0, initialTime?.minute ?? 0);
+    }
   }
 
   @override
@@ -55,14 +51,8 @@ class _TransportationDetailsScreenState extends State<TransportationDetailsScree
     dispPaperController.dispose();
     documentPendingController.dispose();
     dlrMailController.dispose();
-    pickupDateController.dispose();
-    pickupTimeController.dispose();
     pickupLocationController.dispose();
-    dropDateController.dispose();
-    dropTimeController.dispose();
-    dropLocationController.dispose();
-    stayController.dispose();
-    kmsController.dispose();
+    startingKmController.dispose();
     super.dispose();
   }
 
@@ -71,14 +61,15 @@ class _TransportationDetailsScreenState extends State<TransportationDetailsScree
       dispPaper: dispPaperController.text.trim(),
       documentPending: documentPendingController.text.trim(),
       dlrMail: dlrMailController.text.trim(),
-      pickupDate: pickupDateController.text.trim(),
-      pickupTime: pickupTimeController.text.trim(),
+      pickupDate: _pickupDateTime != null ? _formatDate(_pickupDateTime!) : '',
+      pickupTime: _pickupDateTime != null ? _formatTime(TimeOfDay.fromDateTime(_pickupDateTime!)) : '',
       pickupLocation: pickupLocationController.text.trim(),
-      dropDate: dropDateController.text.trim(),
-      dropTime: dropTimeController.text.trim(),
-      dropLocation: dropLocationController.text.trim(),
-      stay: stayController.text.trim(),
-      kms: int.tryParse(kmsController.text.trim()) ?? 0,
+      startingKm: startingKmController.text.trim(),
+      dropDate: '',
+      dropTime: '',
+      dropLocation: '',
+      stay: '',
+      kms: 0,
     );
   }
 
@@ -107,36 +98,6 @@ class _TransportationDetailsScreenState extends State<TransportationDetailsScree
         ),
       ),
     );
-  }
-
-  Future<void> _selectDate(
-    BuildContext context,
-    TextEditingController controller,
-  ) async {
-    final currentDate = _parseDate(controller.text);
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: currentDate ?? DateTime.now(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-    );
-    if (picked != null) {
-      controller.text = _formatDate(picked);
-    }
-  }
-
-  Future<void> _selectTime(
-    BuildContext context,
-    TextEditingController controller,
-  ) async {
-    final currentTime = _parseTime(controller.text);
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: currentTime ?? TimeOfDay.now(),
-    );
-    if (picked != null) {
-      controller.text = _formatTime(picked);
-    }
   }
 
   String _formatDate(DateTime date) {
@@ -283,133 +244,62 @@ class _TransportationDetailsScreenState extends State<TransportationDetailsScree
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildTextField(
-                            'Pickup Date',
-                            pickupDateController,
-                            readOnly: true,
-                            onTap: () => _selectDate(context, pickupDateController),
-                          ),
+                    InkWell(
+                      onTap: () async {
+                        final pickedDate = await showDatePicker(
+                          context: context,
+                          initialDate: _pickupDateTime ?? DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2030),
+                        );
+                        if (pickedDate != null && mounted) {
+                          final pickedTime = await showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay.fromDateTime(_pickupDateTime ?? DateTime.now()),
+                          );
+                          if (pickedTime != null) {
+                            setState(() {
+                              _pickupDateTime = DateTime(
+                                pickedDate.year,
+                                pickedDate.month,
+                                pickedDate.day,
+                                pickedTime.hour,
+                                pickedTime.minute,
+                              );
+                            });
+                          }
+                        }
+                      },
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'Pickup Date and Time',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                          suffixIcon: const Icon(Icons.calendar_today),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildTextField(
-                            'Pickup Time',
-                            pickupTimeController,
-                            readOnly: true,
-                            onTap: () => _selectTime(context, pickupTimeController),
-                          ),
+                        child: Text(
+                          _pickupDateTime != null
+                              ? DateFormat('dd-MM-yyyy HH:mm').format(_pickupDateTime!)
+                              : 'Select Date and Time',
+                          style: TextStyle(color: _pickupDateTime != null ? AppColors.ink : AppColors.muted),
                         ),
-                      ],
+                      ),
                     ),
                     const SizedBox(height: 16),
                     _buildTextField(
                       'Pickup Location',
                       pickupLocationController,
                     ),
-                  ],
-                ),
-              ),
-            ),
-            // const SizedBox(height: 16),
-
-            // Card 3: Drop Information
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Drop Details',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.ink,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildTextField(
-                            'Drop Date',
-                            dropDateController,
-                            readOnly: true,
-                            onTap: () => _selectDate(context, dropDateController),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildTextField(
-                            'Drop Time',
-                            dropTimeController,
-                            readOnly: true,
-                            onTap: () => _selectTime(context, dropTimeController),
-                          ),
-                        ),
-                      ],
-                    ),
                     const SizedBox(height: 16),
                     _buildTextField(
-                      'Drop Location',
-                      dropLocationController,
+                      'Starting KM',
+                      startingKmController,
+                      keyboardType: TextInputType.number,
                     ),
                   ],
                 ),
               ),
             ),
             // const SizedBox(height: 16),
-
-            // Card 4: Additional Information
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Additional Information',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.ink,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildTextField(
-                            'Stay',
-                            stayController,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildTextField(
-                            'KMS',
-                            kmsController,
-                            keyboardType: TextInputType.number,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            // const SizedBox(height: 32),
 
             // Back Button
             ElevatedButton(
