@@ -386,11 +386,18 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
       int extendedDays, double newTotal) async {
     try {
       DateTime baseDate = DateTime.now();
+      String preservedTime = '';
+
+      // Prefer handover stored time if present
+      if (customer.vehicleHandover != null && (customer.vehicleHandover?['vehicleReturnTime'] ?? '').toString().isNotEmpty) {
+        preservedTime = customer.vehicleHandover!['vehicleReturnTime'].toString();
+      }
 
       if (customer.returnDate.isNotEmpty) {
         try {
-          if (customer.returnDate.contains('-')) {
-            final parts = customer.returnDate.split(' ')[0].split('-');
+          final datePart = customer.returnDate.split(' ')[0];
+          if (datePart.contains('-')) {
+            final parts = datePart.split('-');
             if (parts.length == 3) {
               baseDate = DateTime(
                 int.parse(parts[2].length == 2 ? '20${parts[2]}' : parts[2]),
@@ -398,8 +405,8 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                 int.parse(parts[0]),
               );
             }
-          } else if (customer.returnDate.contains('/')) {
-            final parts = customer.returnDate.split(' ')[0].split('/');
+          } else if (datePart.contains('/')) {
+            final parts = datePart.split('/');
             if (parts.length == 3) {
               baseDate = DateTime(
                 int.parse(parts[2].length == 2 ? '20${parts[2]}' : parts[2]),
@@ -408,17 +415,48 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
               );
             }
           } else {
-            baseDate =
-                DateTime.tryParse(customer.returnDate) ?? DateTime.now();
+            baseDate = DateTime.tryParse(datePart) ?? DateTime.now();
           }
         } catch (_) {
           baseDate = DateTime.now();
         }
       }
 
+      // If we have a preserved time, parse it into baseDate
+      if (preservedTime.isEmpty) {
+        // try to fetch from document handover stored in DB
+        final docRefTemp = _customersCollection.doc(customer.custCode);
+        final docSnapTemp = await docRefTemp.get();
+        if (docSnapTemp.exists && docSnapTemp.data() != null) {
+          final Map<String, dynamic> hand = Map<String, dynamic>.from(docSnapTemp.data()!['vehicleHandover'] ?? {});
+          preservedTime = (hand['vehicleReturnTime'] ?? '').toString();
+        }
+      }
+
+      int hour = 0;
+      int minute = 0;
+      if (preservedTime.isNotEmpty) {
+        try {
+          if (preservedTime.toLowerCase().contains('am') || preservedTime.toLowerCase().contains('pm')) {
+            final dt = DateFormat.jm().parse(preservedTime);
+            hour = dt.hour;
+            minute = dt.minute;
+          } else if (preservedTime.contains(':')) {
+            final tparts = preservedTime.split(':');
+            hour = int.tryParse(tparts[0]) ?? 0;
+            minute = int.tryParse(tparts.length > 1 ? tparts[1] : '0') ?? 0;
+          }
+        } catch (_) {
+          hour = 0;
+          minute = 0;
+        }
+      }
+
+      baseDate = DateTime(baseDate.year, baseDate.month, baseDate.day, hour, minute);
+
       final updatedReturnDate = baseDate.add(Duration(days: extendedDays));
-      final formattedNewDate =
-          DateFormat('dd-MM-yyyy').format(updatedReturnDate);
+      final formattedNewDate = DateFormat('dd-MM-yyyy').format(updatedReturnDate);
+      final formattedNewTime = '${updatedReturnDate.hour.toString().padLeft(2, '0')}:${updatedReturnDate.minute.toString().padLeft(2, '0')}';
 
       final int currentDays = int.tryParse(customer.days) ?? 1;
       final int totalDays = currentDays + extendedDays;
@@ -427,10 +465,11 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
       final docSnap = await docRef.get();
       Map<String, dynamic> handover = {};
       if (docSnap.exists && docSnap.data() != null) {
-        handover = Map<String, dynamic>.from(
-            docSnap.data()!['vehicleHandover'] ?? {});
+        handover = Map<String, dynamic>.from(docSnap.data()!['vehicleHandover'] ?? {});
       }
       handover['vehicleReturnDate'] = formattedNewDate;
+      // Preserve original time if present, else set from computed datetime
+      handover['vehicleReturnTime'] = preservedTime.isNotEmpty ? preservedTime : formattedNewTime;
 
       await docRef.update({
         'returnDate': formattedNewDate,
@@ -714,7 +753,7 @@ class _CustomerEntryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final returnStatus =
-        customer.vehicleHandover?['returnStatus'] ?? 'Pending';
+      customer.vehicleHandover?['returnStatus'] ?? 'Pending';
     final isReturned = returnStatus == 'Returned';
     final customerDocs = customer.customerDocuments != null
         ? CustomerDocuments.fromMap(customer.customerDocuments!)
@@ -732,15 +771,64 @@ class _CustomerEntryCard extends StatelessWidget {
             ? customer.vehicleHandover!['vehicleGivenTime']
             : DateFormat('HH:mm').format(DateTime.now());
 
-    String returnDate;
-    String returnTime;
+    String returnDate = '';
+    String returnTime = '';
 
-    if (isReturned) {
-      returnDate = customer.vehicleHandover?['vehicleReturnDate'] ?? customer.returnDate;
-      returnTime = customer.vehicleHandover?['vehicleReturnTime'] ?? '--';
+    // Prefer explicit handover values, fall back to top-level returnDate
+    final handover = customer.vehicleHandover ?? {};
+    if ((handover['vehicleReturnDate'] ?? '').toString().isNotEmpty) {
+      returnDate = handover['vehicleReturnDate'].toString();
     } else {
-      returnDate = customer.returnDate; // Expected return date
-      returnTime = '--';
+      returnDate = customer.returnDate;
+    }
+    if ((handover['vehicleReturnTime'] ?? '').toString().isNotEmpty) {
+      returnTime = handover['vehicleReturnTime'].toString();
+    } else {
+      returnTime = handover['vehicleReturnDate']?.toString().contains(' ') == true
+          ? handover['vehicleReturnDate'].toString().split(' ').skip(1).join(' ')
+          : (customer.returnDate.contains(' ') ? customer.returnDate.split(' ').skip(1).join(' ') : '--');
+    }
+
+    // Compute overdue: not returned AND now > returnDate+returnTime
+    bool isOverdue = false;
+    try {
+      if (returnDate.isNotEmpty) {
+        // parse date
+        final datePart = returnDate.split(' ')[0];
+        List<String> parts = datePart.contains('-') ? datePart.split('-') : datePart.split('/');
+        if (parts.length == 3) {
+          final int day = int.parse(parts[0]);
+          final int month = int.parse(parts[1]);
+          final int year = int.parse(parts[2].length == 2 ? '20${parts[2]}' : parts[2]);
+
+          int hour = 0;
+          int minute = 0;
+          final rt = returnTime;
+          if (rt != null && rt.isNotEmpty && rt != '--') {
+            try {
+              if (rt.toLowerCase().contains('am') || rt.toLowerCase().contains('pm')) {
+                final dt = DateFormat.jm().parse(rt);
+                hour = dt.hour;
+                minute = dt.minute;
+              } else if (rt.contains(':')) {
+                final tparts = rt.split(':');
+                hour = int.tryParse(tparts[0]) ?? 0;
+                minute = int.tryParse(tparts.length > 1 ? tparts[1] : '0') ?? 0;
+              }
+            } catch (_) {
+              hour = 0;
+              minute = 0;
+            }
+          }
+
+          final dt = DateTime(year, month, day, hour, minute);
+          if (returnStatus != 'Returned' && DateTime.now().isAfter(dt)) {
+            isOverdue = true;
+          }
+        }
+      }
+    } catch (_) {
+      isOverdue = false;
     }
 
     // --- Dynamic Calculation Fixes ---
@@ -764,7 +852,7 @@ class _CustomerEntryCard extends StatelessWidget {
 
     // Dynamic Odometer & KM Calculations
     final transportation = Map<String, dynamic>.from(docData['transportation'] ?? {});
-    final handover = Map<String, dynamic>.from(docData['vehicleHandover'] ?? {});
+    final handoverDoc = Map<String, dynamic>.from(docData['vehicleHandover'] ?? {});
 
     final int startKm = int.tryParse(
             transportation['kmStartingNumber']?.toString() ??
@@ -773,9 +861,9 @@ class _CustomerEntryCard extends StatelessWidget {
             '0') ??
         0;
 
-    final int endKm = int.tryParse(handover['kmEndingNumber']?.toString() ?? '0') ?? 0;
+    final int endKm = int.tryParse(handoverDoc['kmEndingNumber']?.toString() ?? '0') ?? 0;
     
-    int totalKm = int.tryParse(handover['totalKmRun']?.toString() ?? '0') ?? 0;
+    int totalKm = int.tryParse(handoverDoc['totalKmRun']?.toString() ?? '0') ?? 0;
     if (totalKm == 0 && endKm > startKm) {
       totalKm = endKm - startKm;
     }
@@ -792,6 +880,7 @@ class _CustomerEntryCard extends StatelessWidget {
             offset: const Offset(0, 4),
           ),
         ],
+        border: isOverdue ? Border.all(color: Colors.red.withOpacity(0.18)) : null,
       ),
       child: Material(
         color: Colors.transparent,
@@ -850,7 +939,24 @@ class _CustomerEntryCard extends StatelessWidget {
                     ),
                     Align(
                       alignment: Alignment.topRight,
-                      child: _ReturnStatusBadge(status: returnStatus),
+                      child: isOverdue
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.red.withOpacity(0.25)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: const [
+                                  Icon(Icons.report_problem, size: 12, color: Colors.red),
+                                  SizedBox(width: 6),
+                                  Text('OVERDUE', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
+                                ],
+                              ),
+                            )
+                          : _ReturnStatusBadge(status: returnStatus),
                     ),
                   ],
                 ),
@@ -883,7 +989,7 @@ class _CustomerEntryCard extends StatelessWidget {
                                 margin:
                                     const EdgeInsets.symmetric(horizontal: 12),
                               ),
-                              _buildDateColumn('Return', returnDate, returnTime),
+                              _buildDateColumn('Return', returnDate, returnTime, isOverdue: isOverdue),
                             ],
                           ),
                         ],
@@ -1074,7 +1180,17 @@ class _CustomerEntryCard extends StatelessWidget {
     );
   }
 
-  Widget _buildDateColumn(String title, String date, String time) {
+  Widget _buildDateColumn(String title, String date, String time, {bool isOverdue = false}) {
+    final dateStyle = TextStyle(
+      fontWeight: FontWeight.bold,
+      fontSize: 13,
+      color: isOverdue ? Colors.red : AppColors.ink,
+    );
+    final timeStyle = TextStyle(
+      color: isOverdue ? Colors.red : AppColors.muted,
+      fontSize: 12,
+    );
+
     return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1089,10 +1205,8 @@ class _CustomerEntryCard extends StatelessWidget {
               date.isNotEmpty
                   ? date
                   : DateFormat('dd-MM-yyyy').format(DateTime.now()),
-              style:
-                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-          Text(time.isNotEmpty ? time : '--:--',
-              style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+              style: dateStyle),
+          Text(time.isNotEmpty ? time : '--:--', style: timeStyle),
         ],
       ),
     );

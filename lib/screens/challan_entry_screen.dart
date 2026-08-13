@@ -142,6 +142,65 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     _billAmountController.text = total % 1 == 0 ? total.toInt().toString() : total.toStringAsFixed(2);
   }
 
+  void _calculateReturnDate() {
+    try {
+      final int days = int.tryParse(_daysController.text.trim()) ?? 0;
+
+      // Determine pickup date/time source (vehicle handover -> transportation -> entry date)
+      String? pickupDateStr;
+      String? pickupTimeStr;
+
+      if (_vehicleHandover != null) {
+        pickupDateStr = _vehicleHandover!.vehicleGivenDate.isNotEmpty
+            ? _vehicleHandover!.vehicleGivenDate
+            : null;
+        pickupTimeStr = _vehicleHandover!.vehicleGivenTime.isNotEmpty
+            ? _vehicleHandover!.vehicleGivenTime
+            : null;
+      }
+
+      if ((pickupDateStr == null || pickupDateStr.isEmpty) && _transportation != null) {
+        pickupDateStr = _transportation!.pickupDate.isNotEmpty ? _transportation!.pickupDate : null;
+        pickupTimeStr = _transportation!.pickupTime.isNotEmpty ? _transportation!.pickupTime : pickupTimeStr;
+      }
+
+      if (pickupDateStr == null || pickupDateStr.isEmpty) {
+        // Fallback to _dateController which contains full datetime string
+        final full = _dateController.text.trim();
+        if (full.isNotEmpty) {
+          final parts = full.split(' ');
+          pickupDateStr = parts.isNotEmpty ? parts[0] : null;
+          if (parts.length > 1) {
+            // parts[1] could be HH:MM:SS -> extract HH:MM
+            final timeParts = parts[1].split(':');
+            if (timeParts.length >= 2) {
+              pickupTimeStr = '${timeParts[0]}:${timeParts[1]}';
+            }
+          }
+        }
+      }
+
+      DateTime base = DateTime.now();
+      final parsedDate = _parseDate(pickupDateStr);
+      if (parsedDate != null) base = parsedDate;
+
+      if (pickupTimeStr != null && pickupTimeStr.isNotEmpty) {
+        final time = _parseTime(pickupTimeStr);
+        if (time != null) {
+          base = DateTime(base.year, base.month, base.day, time.hour, time.minute);
+        }
+      }
+
+      final returnDt = base.add(Duration(days: days));
+      setState(() {
+        _vehicleReturnDate = DateTime(returnDt.year, returnDt.month, returnDt.day);
+        _vehicleReturnTime = TimeOfDay(hour: returnDt.hour, minute: returnDt.minute);
+      });
+    } catch (e) {
+      debugPrint('Error calculating return date: $e');
+    }
+  }
+
   void _nextStep() {
     if (_currentStep < _totalSteps - 1) {
       setState(() {
@@ -284,6 +343,8 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
     _daysController.addListener(_calculateBillAmount);
     _rateController.addListener(_calculateBillAmount);
+    // Auto-calculate expected return whenever days change
+    _daysController.addListener(_calculateReturnDate);
 
     if (widget.custCode != null) {
       _custCodeController.text = widget.custCode ?? '';
@@ -419,6 +480,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   @override
   void dispose() {
     _daysController.removeListener(_calculateBillAmount);
+    _daysController.removeListener(_calculateReturnDate);
     _rateController.removeListener(_calculateBillAmount);
 
     _custCodeController.dispose();
@@ -1047,6 +1109,43 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           ],
         ),
         _buildReadOnlyField('Bill Amount', _billAmountController),
+        if (_vehicleReturnDate != null) ...[
+          const SizedBox(height: 12),
+          Card(
+            color: Colors.grey[50],
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text('Expected Return', style: TextStyle(color: AppColors.muted)),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${_vehicleReturnDate!.day.toString().padLeft(2, '0')}-${_vehicleReturnDate!.month.toString().padLeft(2, '0')}-${_vehicleReturnDate!.year}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _vehicleReturnTime != null
+                            ? '${_vehicleReturnTime!.hour.toString().padLeft(2, '0')}:${_vehicleReturnTime!.minute.toString().padLeft(2, '0')}'
+                            : '--:--',
+                        style: const TextStyle(color: AppColors.muted),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         Material(
           color: Colors.transparent,
