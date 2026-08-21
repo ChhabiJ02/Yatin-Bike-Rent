@@ -16,7 +16,6 @@ class TransportationDetailsScreen extends StatefulWidget {
 }
 
 class _TransportationDetailsScreenState extends State<TransportationDetailsScreen> {
-  final dispPaperController = TextEditingController();
   final documentPendingController = TextEditingController();
   final dlrMailController = TextEditingController();
   final pickupLocationController = TextEditingController();
@@ -33,7 +32,6 @@ class _TransportationDetailsScreenState extends State<TransportationDetailsScree
 
   void _loadInitialData() {
     final data = widget.initialData!;
-    dispPaperController.text = data.dispPaper;
     documentPendingController.text = data.documentPending;
     dlrMailController.text = data.dlrMail;
     pickupLocationController.text = data.pickupLocation;
@@ -48,7 +46,6 @@ class _TransportationDetailsScreenState extends State<TransportationDetailsScree
 
   @override
   void dispose() {
-    dispPaperController.dispose();
     documentPendingController.dispose();
     dlrMailController.dispose();
     pickupLocationController.dispose();
@@ -58,7 +55,7 @@ class _TransportationDetailsScreenState extends State<TransportationDetailsScree
 
   Transportation _buildTransportationData() {
     return Transportation(
-      dispPaper: dispPaperController.text.trim(),
+      dispPaper: '', // Field remove karel hovathi empty string pass kari chhe
       documentPending: documentPendingController.text.trim(),
       dlrMail: dlrMailController.text.trim(),
       pickupDate: _pickupDateTime != null ? _formatDate(_pickupDateTime!) : '',
@@ -204,11 +201,6 @@ class _TransportationDetailsScreenState extends State<TransportationDetailsScree
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildTextField(
-                      'DISP. PAPER',
-                      dispPaperController,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildTextField(
                       'Document Pending',
                       documentPendingController,
                     ),
@@ -222,7 +214,6 @@ class _TransportationDetailsScreenState extends State<TransportationDetailsScree
                 ),
               ),
             ),
-            // const SizedBox(height: 5),
 
             // Card 2: Pickup Information
             Card(
@@ -299,7 +290,6 @@ class _TransportationDetailsScreenState extends State<TransportationDetailsScree
                 ),
               ),
             ),
-            // const SizedBox(height: 16),
 
             // Back Button
             ElevatedButton(

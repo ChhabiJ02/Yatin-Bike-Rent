@@ -28,7 +28,7 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
   bool _isSaving = false;
   bool _qrLoadError = false;
 
-  final _paymentModes = ['Cash', 'UPI', 'Bank Transfer', 'Card'];
+  List<QRCodePayment> _paymentMethods = [];
 
   @override
   void initState() {
@@ -44,7 +44,11 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
       );
       if (mounted) {
         setState(() {
-          _qrCodes = codes;
+          _paymentMethods = codes;
+          _qrCodes = codes.where((method) => method.requiresQr).toList();
+          if (codes.every((method) => method.name != _paymentMode) && codes.isNotEmpty) {
+            _paymentMode = codes.first.name;
+          }
         });
       }
     } on Exception catch (_) {
@@ -77,7 +81,7 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _qrCodes.isEmpty
+          : _paymentMethods.isEmpty
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -110,7 +114,7 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
                 children: [
                   _buildPaymentModes(),
                   const SizedBox(height: 16),
-                  _buildQRSelection(),
+                  if (_paymentModeRequiresQr) _buildQRSelection(),
                   const SizedBox(height: 16),
                   _buildAmountField(),
                   const SizedBox(height: 16),
@@ -138,12 +142,17 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
   Widget _buildPaymentModes() {
     return Wrap(
       spacing: 8,
-      children: _paymentModes.map((mode) {
-        final isSelected = mode == _paymentMode;
+      children: _paymentMethods.map((method) {
+        final isSelected = method.name == _paymentMode;
         return ChoiceChip(
-          label: Text(mode),
+          label: Text(method.name),
           selected: isSelected,
-          onSelected: (_) => setState(() => _paymentMode = mode),
+          onSelected: (_) {
+            setState(() {
+              _paymentMode = method.name;
+              if (!method.requiresQr) _selectedQR = null;
+            });
+          },
           selectedColor: AppColors.ember,
           labelStyle: TextStyle(
             color: isSelected ? Colors.white : AppColors.ink,
@@ -153,6 +162,11 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
       }).toList(),
     );
   }
+
+  bool get _paymentModeRequiresQr => _paymentMethods
+      .where((method) => method.name == _paymentMode)
+      .firstOrNull
+      ?.requiresQr ?? false;
 
   Widget _buildQRSelection() {
     if (_qrCodes.isEmpty) {

@@ -248,6 +248,20 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
   }
 
   Future<void> _showExtendBookingDialog(Customer customer) async {
+    final returnStatus = customer.vehicleHandover?['returnStatus']
+            ?.toString()
+            .trim()
+            .toLowerCase() ??
+        'pending';
+    if (!{'pending', 'active'}.contains(returnStatus)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Only active or pending rentals can be extended.')),
+        );
+      }
+      return;
+    }
+
     int extendedDays = 1;
     final daysController = TextEditingController(text: '1');
 
@@ -753,8 +767,8 @@ class _CustomerEntryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final returnStatus =
-      customer.vehicleHandover?['returnStatus'] ?? 'Pending';
-    final isReturned = returnStatus == 'Returned';
+        customer.vehicleHandover?['returnStatus']?.toString() ?? 'Pending';
+    final isReturned = returnStatus.trim().toLowerCase() == 'returned';
     final customerDocs = customer.customerDocuments != null
         ? CustomerDocuments.fromMap(customer.customerDocuments!)
         : CustomerDocuments();
@@ -1123,12 +1137,14 @@ class _CustomerEntryCard extends StatelessWidget {
                           context,
                           'Extend',
                           Icons.sync,
-                          () {
-                            if (onExtendBooking != null) {
-                              onExtendBooking!(customer);
-                            }
-                          },
-                          color: AppColors.primaryGreen,
+                          isReturned
+                              ? null
+                              : () {
+                                  if (onExtendBooking != null) {
+                                    onExtendBooking!(customer);
+                                  }
+                                },
+                          color: isReturned ? Colors.grey : AppColors.primaryGreen,
                         ),
                       ),
                       const VerticalDivider(width: 1),

@@ -113,9 +113,33 @@ class RentalService {
       String no) async {
     if (no.trim().isEmpty) return null;
 
-    final querySnapshot = await _db
+    var querySnapshot = await _db
         .collection('vehicles')
         .where('no', isEqualTo: no.trim())
+        .limit(1)
+        .get();
+
+    if (querySnapshot.docs.isEmpty) {
+      final intValue = int.tryParse(no.trim());
+      if (intValue != null) {
+        querySnapshot = await _db
+            .collection('vehicles')
+            .where('no', isEqualTo: intValue)
+            .limit(1)
+            .get();
+      }
+    }
+
+    return querySnapshot.docs.isNotEmpty ? querySnapshot.docs.first : null;
+  }
+
+  static Future<DocumentSnapshot<Map<String, dynamic>>?> findVehicleByName(
+      String name) async {
+    if (name.trim().isEmpty) return null;
+
+    final querySnapshot = await _db
+        .collection('vehicles')
+        .where('name', isEqualTo: name.trim())
         .limit(1)
         .get();
 

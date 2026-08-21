@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/customer_documents.dart';
 import '../models/customer.dart';
+import '../models/qr_code.dart';
 import '../models/vehicle_handover.dart';
 import '../models/travel_details.dart';
 import '../models/transportation_model.dart';
 import '../theme/app_theme.dart';
 import '../widgets/form_image_picker.dart';
 import '../services/challan_service.dart';
+import '../services/qr_payment_service.dart';
 import '../services/rental_service.dart';
+import '../admin/customer_bookings_screen.dart';
 import 'transportation_details_screen.dart';
 
 class ChallanEntryScreen extends StatefulWidget {
@@ -47,10 +51,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   // Vehicle Entry Controllers
   final _vehicleEntryNoController = TextEditingController();
   final _vehicleEntryNameController = TextEditingController();
-  final _vehicleEntryCategoriesController = TextEditingController();
-  final _vehicleEntryDescriptionController = TextEditingController();
-  final _vehicleChasisNoController = TextEditingController();
-  final _vehicleEngNoController = TextEditingController();
 
   final _vehicleController = TextEditingController();
   final _vehicleNumberController = TextEditingController();
@@ -73,6 +73,14 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   final _dropDateController = TextEditingController();
   final _dropTimeController = TextEditingController();
   final _additionalInfoController = TextEditingController();
+
+  // Customer Mobile Verification Flow States
+  int _customerVerificationStage = 0; // 0: Mobile Input, 1: Choice, 2: Scanner, 3: Full Form
+  bool _isCheckingCustomer = false;
+  DocumentSnapshot<Map<String, dynamic>>? _returningCustomer;
+  String _lastSearchedPhone = '';
+  int _searchRequestId = 0;
+  bool _isScanningFront = false;
   
   // Wizard Step State
   int _currentStep = 0;
@@ -97,7 +105,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
   // Payment Options
   String _selectedPaymentMode = 'Cash';
-  static const List<String> _paymentModes = ['Cash', 'UPI / QR', 'Bank Transfer', 'Card'];
+  List<QRCodePayment> _paymentMethods = const [];
 
   // Location options
   static const _pickupLocations = [
@@ -124,6 +132,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
   bool _isEditMode = false;
   bool _isSaving = false; 
+  bool _isDeleting = false;
 
   String _formatDateTime(DateTime dt) {
     return '${dt.day.toString().padLeft(2, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
@@ -142,63 +151,45 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     _billAmountController.text = total % 1 == 0 ? total.toInt().toString() : total.toStringAsFixed(2);
   }
 
-  void _calculateReturnDate() {
-    try {
-      final int days = int.tryParse(_daysController.text.trim()) ?? 0;
+  // Calculate days & bill amount when Expected Return Date/Time changes
+  void _calculateDaysFromReturnDate() {
+    if (_vehicleReturnDate == null) return;
 
-      // Determine pickup date/time source (vehicle handover -> transportation -> entry date)
-      String? pickupDateStr;
-      String? pickupTimeStr;
-
-      if (_vehicleHandover != null) {
-        pickupDateStr = _vehicleHandover!.vehicleGivenDate.isNotEmpty
-            ? _vehicleHandover!.vehicleGivenDate
-            : null;
-        pickupTimeStr = _vehicleHandover!.vehicleGivenTime.isNotEmpty
-            ? _vehicleHandover!.vehicleGivenTime
-            : null;
-      }
-
-      if ((pickupDateStr == null || pickupDateStr.isEmpty) && _transportation != null) {
-        pickupDateStr = _transportation!.pickupDate.isNotEmpty ? _transportation!.pickupDate : null;
-        pickupTimeStr = _transportation!.pickupTime.isNotEmpty ? _transportation!.pickupTime : pickupTimeStr;
-      }
-
-      if (pickupDateStr == null || pickupDateStr.isEmpty) {
-        // Fallback to _dateController which contains full datetime string
-        final full = _dateController.text.trim();
-        if (full.isNotEmpty) {
-          final parts = full.split(' ');
-          pickupDateStr = parts.isNotEmpty ? parts[0] : null;
-          if (parts.length > 1) {
-            // parts[1] could be HH:MM:SS -> extract HH:MM
-            final timeParts = parts[1].split(':');
-            if (timeParts.length >= 2) {
-              pickupTimeStr = '${timeParts[0]}:${timeParts[1]}';
-            }
-          }
-        }
-      }
-
-      DateTime base = DateTime.now();
-      final parsedDate = _parseDate(pickupDateStr);
-      if (parsedDate != null) base = parsedDate;
-
-      if (pickupTimeStr != null && pickupTimeStr.isNotEmpty) {
-        final time = _parseTime(pickupTimeStr);
-        if (time != null) {
-          base = DateTime(base.year, base.month, base.day, time.hour, time.minute);
-        }
-      }
-
-      final returnDt = base.add(Duration(days: days));
-      setState(() {
-        _vehicleReturnDate = DateTime(returnDt.year, returnDt.month, returnDt.day);
-        _vehicleReturnTime = TimeOfDay(hour: returnDt.hour, minute: returnDt.minute);
-      });
-    } catch (e) {
-      debugPrint('Error calculating return date: $e');
+    DateTime pickupDt = DateTime.now();
+    if (_vehicleGivenDate != null) {
+      pickupDt = DateTime(
+        _vehicleGivenDate!.year,
+        _vehicleGivenDate!.month,
+        _vehicleGivenDate!.day,
+        _vehicleGivenTime?.hour ?? 0,
+        _vehicleGivenTime?.minute ?? 0,
+      );
+    } else {
+      final parsed = _parseDate(_dateController.text.split(' ').first);
+      if (parsed != null) pickupDt = parsed;
     }
+
+    final returnDt = DateTime(
+      _vehicleReturnDate!.year,
+      _vehicleReturnDate!.month,
+      _vehicleReturnDate!.day,
+      _vehicleReturnTime?.hour ?? 0,
+      _vehicleReturnTime?.minute ?? 0,
+    );
+
+    final difference = returnDt.difference(pickupDt);
+    double calculatedDays = difference.inHours / 24.0;
+    if (calculatedDays <= 0) {
+      calculatedDays = 1;
+    } else {
+      calculatedDays = (calculatedDays * 10).ceil() / 10;
+    }
+
+    _daysController.text = calculatedDays % 1 == 0
+        ? calculatedDays.toInt().toString()
+        : calculatedDays.toStringAsFixed(1);
+
+    _calculateBillAmount();
   }
 
   void _nextStep() {
@@ -273,10 +264,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     if (data == null) return;
 
     _vehicleEntryNameController.text = data['name'] ?? data['vehicleName'] ?? '';
-    _vehicleEntryCategoriesController.text = data['category'] ?? data['type'] ?? '';
-    _vehicleEntryDescriptionController.text = data['description'] ?? '';
-    _vehicleChasisNoController.text = data['chasisNo'] ?? data['chassisNo'] ?? '';
-    _vehicleEngNoController.text = data['engNo'] ?? data['engineNo'] ?? '';
     _rateController.text = data['dailyRate']?.toString() ?? '';
 
     if (_vehicleNumberController.text.isEmpty) {
@@ -290,10 +277,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   void _clearVehicleEntryFields({bool clearNumber = true}) {
     if (clearNumber) _vehicleEntryNoController.clear();
     _vehicleEntryNameController.clear();
-    _vehicleEntryCategoriesController.clear();
-    _vehicleEntryDescriptionController.clear();
-    _vehicleChasisNoController.clear();
-    _vehicleEngNoController.clear();
   }
 
   Future<void> _generateCustomerCode(String fyear) async {
@@ -329,9 +312,88 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     }
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
+  // --- Phone Auto Fetch Logic ---
+  void _onPhoneChanged() {
+    final phone = _phoneController.text.trim();
+    if (phone.length != 10) {
+      _lastSearchedPhone = '';
+      if (_returningCustomer != null || _customerVerificationStage != 0) {
+        setState(() {
+          _returningCustomer = null;
+          _customerVerificationStage = 0;
+        });
+      }
+      return;
+    }
+
+    if (!_isEditMode && !_isCheckingCustomer && phone != _lastSearchedPhone) {
+      _lastSearchedPhone = phone;
+      _checkExistingCustomer(phone);
+    }
+  }
+
+  Future<void> _checkExistingCustomer(String phone) async {
+    final requestId = ++_searchRequestId;
+    setState(() {
+      _isCheckingCustomer = true;
+      _returningCustomer = null;
+    });
+
+    final phoneFormats = [phone, '+91$phone'];
+    DocumentSnapshot<Map<String, dynamic>>? match;
+
+    try {
+      for (final field in ['smsPhone', 'phone', 'mobile']) {
+        for (final value in phoneFormats) {
+          final result = await _customersCollection
+              .where(field, isEqualTo: value)
+              .limit(1)
+              .get();
+          if (result.docs.isNotEmpty) {
+            match = result.docs.first;
+            break;
+          }
+        }
+        if (match != null) break;
+      }
+
+      if (!mounted || requestId != _searchRequestId) return;
+      if (match != null) {
+        _prefillReturningCustomer(match);
+        setState(() {
+          _returningCustomer = match;
+          _isCheckingCustomer = false;
+        });
+        await Future<void>.delayed(const Duration(milliseconds: 1200));
+        if (mounted && requestId == _searchRequestId && _returningCustomer == match) {
+          setState(() => _customerVerificationStage = 3);
+        }
+      } else {
+        setState(() {
+          _isCheckingCustomer = false;
+          _customerVerificationStage = 1;
+        });
+      }
+    } catch (_) {
+      if (mounted && requestId == _searchRequestId) {
+        setState(() => _isCheckingCustomer = false);
+      }
+    }
+  }
+
+  void _prefillReturningCustomer(DocumentSnapshot<Map<String, dynamic>> snapshot) {
+    final data = snapshot.data() ?? <String, dynamic>{};
+    _partyNameController.text = (data['name'] ?? data['partyName'] ?? '').toString();
+    _alternatePhoneController.text = (data['alternatePhone'] ?? '').toString();
+    _aadharController.text = (data['aadharNo'] ?? '').toString();
+    _licenseController.text = (data['licenceNo'] ?? data['licenseNo'] ?? '').toString();
+    _customerCityController.text = (data['city'] ?? '').toString();
+
+    if (data['customerDocuments'] != null) {
+      _customerDocuments = CustomerDocuments.fromMap(
+        Map<String, dynamic>.from(data['customerDocuments']),
+      );
+    }
   }
 
   @override
@@ -343,12 +405,13 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
     _daysController.addListener(_calculateBillAmount);
     _rateController.addListener(_calculateBillAmount);
-    // Auto-calculate expected return whenever days change
-    _daysController.addListener(_calculateReturnDate);
+    _phoneController.addListener(_onPhoneChanged);
+    _loadPaymentMethods();
 
     if (widget.custCode != null) {
       _custCodeController.text = widget.custCode ?? '';
       _isEditMode = true;
+      _customerVerificationStage = 3;
       _loadExistingData();
     } else {
       _custCodeController.text = 'Generating...';
@@ -361,6 +424,21 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     _registerFocusNode(_phoneController, 0);
     _registerFocusNode(_daysController, 2);
     _registerFocusNode(_rateController, 2);
+  }
+
+  Future<void> _loadPaymentMethods() async {
+    final methods = await QRPaymentService.getActiveQRCodes();
+    if (!mounted) return;
+
+    setState(() {
+      _paymentMethods = methods;
+      final selectedMethod = methods.where((method) => method.name == _selectedPaymentMode).firstOrNull;
+      if (selectedMethod == null && methods.isNotEmpty) {
+        _selectedPaymentMode = methods.first.name;
+      }
+      _selectedQRCodeId = selectedMethod?.id;
+      _selectedQRCodeImageUrl = selectedMethod?.imageUrl;
+    });
   }
 
   DateTime? _parseDate(String? dateStr) {
@@ -417,10 +495,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         final ve = data['vehicleEntry'];
         _vehicleEntryNoController.text = ve['no'] ?? '';
         _vehicleEntryNameController.text = ve['name'] ?? '';
-        _vehicleEntryCategoriesController.text = ve['categories'] ?? '';
-        _vehicleEntryDescriptionController.text = ve['description'] ?? '';
-        _vehicleChasisNoController.text = ve['chasisNo'] ?? '';
-        _vehicleEngNoController.text = ve['engNo'] ?? '';
       }
 
       if (data['customerDocuments'] != null) {
@@ -477,11 +551,65 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     }
   }
 
+  Future<void> _deleteChallan() async {
+    final customerCode = (widget.custCode ?? _custCodeController.text).trim();
+    if (customerCode.isEmpty || _isDeleting) {
+      return;
+    }
+
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Challan?'),
+        content: const Text(
+          'This challan and its customer details will be permanently deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete != true || !mounted) return;
+
+    setState(() => _isDeleting = true);
+    try {
+      final customerRef = _customersCollection.doc(customerCode);
+      await customerRef.delete();
+      final deletedDocument = await customerRef.get();
+      if (deletedDocument.exists) {
+        throw Exception('Firebase did not remove the challan document.');
+      }
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => const CustomerBookingsScreen(),
+        ),
+        (route) => false,
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isDeleting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to delete challan: $e')),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     _daysController.removeListener(_calculateBillAmount);
-    _daysController.removeListener(_calculateReturnDate);
     _rateController.removeListener(_calculateBillAmount);
+    _phoneController.removeListener(_onPhoneChanged);
 
     _custCodeController.dispose();
     _dateController.dispose();
@@ -494,10 +622,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     _licenseController.dispose();
     _vehicleEntryNoController.dispose();
     _vehicleEntryNameController.dispose();
-    _vehicleEntryCategoriesController.dispose();
-    _vehicleEntryDescriptionController.dispose();
-    _vehicleChasisNoController.dispose();
-    _vehicleEngNoController.dispose();
     _vehicleController.dispose();
     _vehicleNumberController.dispose();
     _daysController.dispose();
@@ -530,6 +654,23 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         title: Text(_isEditMode ? 'Edit Challan' : 'New Challan', style: const TextStyle(color: Colors.white)),
         backgroundColor: AppColors.ember,
         foregroundColor: Colors.white, 
+        actions: [
+          if (_isEditMode)
+            IconButton(
+              tooltip: 'Delete challan',
+              onPressed: _isDeleting ? null : _deleteChallan,
+              icon: _isDeleting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.delete_outline),
+            ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(80.0),
           child: Padding(
@@ -598,7 +739,18 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     );
   }
 
+  // Updated Customer Step with Auto Fetching UI Flow
   Widget _buildCustomerStep() {
+    if (!_isEditMode && _customerVerificationStage == 0) {
+      return _buildMobileVerificationStep();
+    }
+    if (!_isEditMode && _customerVerificationStage == 1) {
+      return _buildIdChoiceStep();
+    }
+    if (!_isEditMode && _customerVerificationStage == 2) {
+      return _buildIdScannerStep();
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -639,9 +791,222 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               ),
             ),
           ),
-          _buildTextField(_aadharController, 'ID/Aadhaar Number'),
+          _buildTextField(
+            _aadharController, 
+            'ID/Aadhaar Number',
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(12),
+            ],
+          ),
           _buildTextField(_licenseController, 'Driver License Number'),
           _buildTextField(_customerCityController, 'City'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileVerificationStep() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Who's renting?",
+            style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.black),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "Enter the customer's 10-digit mobile number",
+            style: TextStyle(fontSize: 15, color: Colors.grey),
+          ),
+          const SizedBox(height: 28),
+          TextFormField(
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(10),
+            ],
+            decoration: InputDecoration(
+              prefixIcon: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                child: const Text(
+                  '+91  |',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey),
+                ),
+              ),
+              hintText: 'Enter mobile no',
+              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 18),
+              suffixIcon: _isCheckingCustomer
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                    )
+                  : (_returningCustomer != null
+                      ? const Icon(Icons.check_circle, color: Color(0xFF00C853), size: 24)
+                      : null),
+              contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.shade300)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.shade300)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.black, width: 1.5)),
+            ),
+          ),
+          if (_returningCustomer != null) ...[
+            const SizedBox(height: 20),
+            _buildReturningCustomerCard(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReturningCustomerCard() {
+    final data = _returningCustomer?.data() ?? <String, dynamic>{};
+    final name = (data['name'] ?? data['partyName'] ?? 'Customer').toString();
+    final docs = data['customerDocuments'];
+    final photo = docs is Map ? (docs['customerPhoto'] ?? '').toString() : '';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF00C853).withOpacity(0.4)),
+        boxShadow: [BoxShadow(color: Colors.grey.shade100, blurRadius: 8, spreadRadius: 2)],
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: Colors.grey.shade200,
+            backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
+            child: photo.isEmpty ? const Icon(Icons.person, color: Colors.grey) : null,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 4),
+                Row(
+                  children: const [
+                    Icon(Icons.check_circle, color: Color(0xFF00C853), size: 16),
+                    SizedBox(width: 4),
+                    Text('Returning customer', style: TextStyle(color: Color(0xFF00C853), fontWeight: FontWeight.w600, fontSize: 13)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIdChoiceStep() {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _buildChoiceCard(
+            icon: Icons.qr_code_scanner,
+            title: 'Scan ID card',
+            subtitle: 'Auto-fills name, ID number & address',
+            isDark: true,
+            onTap: () => setState(() {
+              _isScanningFront = true;
+              _customerVerificationStage = 2;
+            }),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(child: Divider(color: Colors.grey.shade300)),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Text('or', style: TextStyle(color: Colors.grey)),
+              ),
+              Expanded(child: Divider(color: Colors.grey.shade300)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildChoiceCard(
+            icon: Icons.edit_note,
+            title: 'Fill in manually',
+            subtitle: 'Type name, ID type & number yourself',
+            isDark: false,
+            onTap: () => setState(() => _customerVerificationStage = 3),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChoiceCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF18181B) : const Color(0xFFF8F9FA),
+          borderRadius: BorderRadius.circular(20),
+          border: isDark ? null : Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: isDark ? Colors.white12 : Colors.white,
+              child: Icon(icon, color: isDark ? Colors.white : Colors.black),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: isDark ? Colors.white : Colors.black)),
+                  const SizedBox(height: 4),
+                  Text(subtitle, style: TextStyle(fontSize: 13, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: isDark ? Colors.white : Colors.black),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIdScannerStep() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.camera_alt, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text(_isScanningFront ? 'Scanning ID Front...' : 'Scanning ID Back...'),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _customerVerificationStage = 3;
+              });
+            },
+            child: const Text('Complete Scan & Fill Form'),
+          ),
         ],
       ),
     );
@@ -736,34 +1101,46 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           
           _buildTextField(_depositController, 'Deposit Amount (₹)', keyboardType: TextInputType.number),
           
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: DropdownButtonFormField<String>(
-              value: _selectedPaymentMode,
-              decoration: InputDecoration(
-                labelText: 'Payment Mode',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              items: _paymentModes
-                  .map((mode) => DropdownMenuItem(value: mode, child: Text(mode)))
-                  .toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    _selectedPaymentMode = value;
-                  });
-                }
-              },
-            ),
-          ),
-
-          if (_selectedPaymentMode == 'UPI / QR') ...[
-            const SizedBox(height: 8),
-            _buildPaymentMethodDropdown(),
+          _buildPaymentModeDropdown(),
+          if (_selectedQRCodeImageUrl?.isNotEmpty == true) ...[
             const SizedBox(height: 12),
             _buildQRCodeImagePreview(),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentModeDropdown() {
+    if (_paymentMethods.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: 12),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        initialValue: _paymentMethods.any((method) => method.name == _selectedPaymentMode)
+            ? _selectedPaymentMode
+            : null,
+        decoration: InputDecoration(
+          labelText: 'Payment Mode',
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        items: _paymentMethods
+            .map((method) => DropdownMenuItem(value: method.name, child: Text(method.name)))
+            .toList(),
+        onChanged: (value) {
+          if (value == null) return;
+          final method = _paymentMethods.firstWhere((item) => item.name == value);
+          setState(() {
+            _selectedPaymentMode = method.name;
+            _selectedQRCodeId = method.requiresQr ? method.id : null;
+            _selectedQRCodeImageUrl = method.requiresQr ? method.imageUrl : null;
+          });
+        },
       ),
     );
   }
@@ -773,6 +1150,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     String label, {
     int maxLines = 1,
     TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
     bool required = false,
   }) {
     _registerFocusNode(controller, _currentStep);
@@ -782,6 +1160,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         controller: controller, 
         maxLines: maxLines,
         keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
         focusNode: _focusNodes[controller]?.focusNode,
         decoration: InputDecoration(
           labelText: label,
@@ -876,10 +1255,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           ),
         ),
         _buildTextField(_vehicleEntryNameController, 'Vehicle Name'),
-        _buildTextField(_vehicleEntryCategoriesController, 'Categories'),
-        _buildTextField(_vehicleEntryDescriptionController, 'Description', maxLines: 3),
-        _buildTextField(_vehicleChasisNoController, 'Chasis No.'),
-        _buildTextField(_vehicleEngNoController, 'Eng No.'),
       ],
     );
   }
@@ -891,129 +1266,72 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
     return Column( 
       children: [
-        FormImagePicker(
-          label: 'Aadhaar / License - Front',
-          imageUrl: _customerDocuments?.idFront,
-          folder: 'documents/$code/documents',
-          onImageSelected: (url) {
-            setState(() {
-              _customerDocuments =
-                  (_customerDocuments ?? CustomerDocuments()).copyWith(idFront: url);
-            });
-          },
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: FormImagePicker(
+                label: 'ID - Front',
+                imageUrl: _customerDocuments?.idFront,
+                folder: 'documents/$code/documents',
+                onImageSelected: (url) {
+                  setState(() {
+                    _customerDocuments =
+                        (_customerDocuments ?? CustomerDocuments()).copyWith(idFront: url);
+                  });
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FormImagePicker(
+                label: 'ID - Back',
+                imageUrl: _customerDocuments?.idBack,
+                folder: 'documents/$code/documents',
+                onImageSelected: (url) {
+                  setState(() {
+                    _customerDocuments =
+                        (_customerDocuments ?? CustomerDocuments()).copyWith(idBack: url);
+                  });
+                },
+              ),
+            ),
+          ],
         ),
-        FormImagePicker(
-          label: 'Aadhaar / License - Back',
-          imageUrl: _customerDocuments?.idBack,
-          folder: 'documents/$code/documents',
-          onImageSelected: (url) {
-            setState(() {
-              _customerDocuments =
-                  (_customerDocuments ?? CustomerDocuments()).copyWith(idBack: url);
-            });
-          },
-        ),
-        FormImagePicker(
-          label: 'Customer with Vehicle/Ticket',
-          imageUrl: _customerDocuments?.customerPhoto,
-          folder: 'documents/$code/customer',
-          onImageSelected: (url) {
-            setState(() {
-              _customerDocuments = (_customerDocuments ?? CustomerDocuments())
-                  .copyWith(customerPhoto: url);
-            });
-          },
-        ),
-        FormImagePicker(
-          label: 'Travel Ticket (Optional)',
-          imageUrl: _customerDocuments?.travelTicketPhoto,
-          folder: 'documents/$code/travel',
-          onImageSelected: (url) {
-            setState(() {
-              _customerDocuments = (_customerDocuments ?? CustomerDocuments())
-                  .copyWith(travelTicketPhoto: url);
-            });
-          },
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: FormImagePicker(
+                label: 'Customer Photo',
+                imageUrl: _customerDocuments?.customerPhoto,
+                folder: 'documents/$code/customer',
+                onImageSelected: (url) {
+                  setState(() {
+                    _customerDocuments = (_customerDocuments ?? CustomerDocuments())
+                        .copyWith(customerPhoto: url);
+                  });
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FormImagePicker(
+                label: 'Travel Ticket',
+                imageUrl: _customerDocuments?.travelTicketPhoto,
+                folder: 'documents/$code/travel',
+                onImageSelected: (url) {
+                  setState(() {
+                    _customerDocuments = (_customerDocuments ?? CustomerDocuments())
+                        .copyWith(travelTicketPhoto: url);
+                  });
+                },
+              ),
+            ),
+          ],
         ),
       ],
-    );
-  }
-
-  Widget _buildVehicleDropdown() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _vehiclesCollection.snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text('Error loading vehicles: ${snapshot.error}'),
-          );
-        }
-
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.only(bottom: 12),
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        final docs = snapshot.data?.docs ?? [];
-        final vehicleItems = docs.map((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          return {
-            'name': data['name']?.toString() ?? '',
-            'dailyRate': data['dailyRate']?.toString() ?? '0',
-            'number': data['number']?.toString() ?? '',
-          };
-        }).where((v) => v['name']!.isNotEmpty).toList();
-
-        String? selectedValue;
-        if (_vehicleController.text.isNotEmpty) {
-          final exists = vehicleItems.any((v) => v['name'] == _vehicleController.text);
-          if (exists) {
-            selectedValue = _vehicleController.text;
-          }
-        }
-
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: DropdownButtonFormField<String>(
-            initialValue: selectedValue,
-            decoration: InputDecoration(
-              labelText: 'Vehicle Name',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            items: vehicleItems.map((vehicle) {
-              return DropdownMenuItem<String>(
-                value: vehicle['name']!,
-                child: Text(vehicle['name']!),
-              );
-            }).toList(),
-            onChanged: (value) {
-              if (value != null) {
-                setState(() {
-                  _vehicleController.text = value;
-
-                  final selectedVehicleData = vehicleItems.firstWhere(
-                    (v) => v['name'] == value,
-                    orElse: () => {'dailyRate': '', 'number': ''},
-                  );
-
-                  if (selectedVehicleData['dailyRate']!.isNotEmpty) {
-                    _rateController.text = selectedVehicleData['dailyRate']!;
-                  }
-                  if (selectedVehicleData['number']!.isNotEmpty) {
-                    _vehicleNumberController.text = selectedVehicleData['number']!;
-                  }
-                });
-              }
-            },
-            validator: (value) => (value == null || value.isEmpty)
-                ? 'Please select a vehicle'
-                : null,
-          ),
-        );
-      },
     );
   }
 
@@ -1022,33 +1340,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       children: [
         // Handover section
       ],
-    );
-  }
-
-  Widget _buildDropdownField(
-    String label,
-    TextEditingController controller,
-    List<String> options,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: DropdownButtonFormField<String>(
-        initialValue: controller.text.isEmpty ? null : controller.text,
-        decoration: InputDecoration(
-          labelText: label,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-        items: options
-            .map(
-              (option) => DropdownMenuItem(value: option, child: Text(option)),
-            )
-            .toList(),
-        onChanged: (value) {
-          if (value != null) {
-            controller.text = value;
-          }
-        },
-      ),
     );
   }
 
@@ -1084,7 +1375,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         ),
         child: Text(
           date != null
-              ? '${date.day}-${date.month}-${date.year}${time != null ? ' ${time.hour}:${time.minute}' : ''}'
+              ? '${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}${time != null ? ' ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}' : ''}'
               : 'Select $label',
           style: TextStyle(
             color: date != null ? AppColors.ink : AppColors.muted,
@@ -1097,6 +1388,21 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   Widget _buildBookingSection() {
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _buildDateTimePicker(
+            'Expected Return',
+            _vehicleReturnDate,
+            _vehicleReturnTime,
+            (pickedDate, pickedTime) {
+              setState(() {
+                _vehicleReturnDate = pickedDate;
+                _vehicleReturnTime = pickedTime;
+                _calculateDaysFromReturnDate();
+              });
+            },
+          ),
+        ),
         Row(
           children: [
             Expanded(
@@ -1109,43 +1415,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           ],
         ),
         _buildReadOnlyField('Bill Amount', _billAmountController),
-        if (_vehicleReturnDate != null) ...[
-          const SizedBox(height: 12),
-          Card(
-            color: Colors.grey[50],
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text('Expected Return', style: TextStyle(color: AppColors.muted)),
-                    ],
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        '${_vehicleReturnDate!.day.toString().padLeft(2, '0')}-${_vehicleReturnDate!.month.toString().padLeft(2, '0')}-${_vehicleReturnDate!.year}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _vehicleReturnTime != null
-                            ? '${_vehicleReturnTime!.hour.toString().padLeft(2, '0')}:${_vehicleReturnTime!.minute.toString().padLeft(2, '0')}'
-                            : '--:--',
-                        style: const TextStyle(color: AppColors.muted),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
         const SizedBox(height: 16),
         Material(
           color: Colors.transparent,
@@ -1228,57 +1497,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildPaymentMethodDropdown() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _paymentSettingsCollection.where('isActive', isEqualTo: true).snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Text('Error loading payment methods: ${snapshot.error}');
-        }
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final qrDocs = snapshot.data?.docs ?? [];
-        if (qrDocs.isEmpty) {
-          return const Text('No active payment methods found.');
-        }
-
-        final selectedValueExists = qrDocs.any((doc) => doc.id == _selectedQRCodeId);
-
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: DropdownButtonFormField<String>(
-            initialValue: selectedValueExists ? _selectedQRCodeId : null,
-            decoration: InputDecoration(
-              labelText: 'Select QR Code',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            items: qrDocs.map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              return DropdownMenuItem<String>(
-                value: doc.id,
-                child: Text(data['name'] ?? 'Unnamed QR'),
-              );
-            }).toList(),
-            onChanged: (value) {
-              setState(() {
-                _selectedQRCodeId = value;
-                if (value == null) {
-                  _selectedQRCodeImageUrl = null;
-                } else {
-                  final selectedDoc = qrDocs.firstWhere((doc) => doc.id == value);
-                  final data = selectedDoc.data() as Map<String, dynamic>;
-                  _selectedQRCodeImageUrl = data['imageUrl'];
-                }
-              });
-            },
-          ),
-        );
-      },
     );
   }
 
@@ -1369,7 +1587,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         customerCameFrom: _customerCameFromController.text.trim(),
         stayingAt: _stayingAtController.text.trim(),
         hotelName: _hotelNameController.text.trim(),
-        stayAddress: '', // Kept for model compatibility, but not collected from UI
+        stayAddress: '',
         landmark: _landmarkController.text.trim(),
         city: _cityController.text.trim(),
         state: _stateController.text.trim(),
@@ -1404,10 +1622,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       customerData['vehicleEntry'] = {
         'no': _vehicleEntryNoController.text.trim(),
         'name': _vehicleEntryNameController.text.trim(),
-        'categories': _vehicleEntryCategoriesController.text.trim(),
-        'description': _vehicleEntryDescriptionController.text.trim(),
-        'chasisNo': _vehicleChasisNoController.text.trim(),
-        'engNo': _vehicleEngNoController.text.trim(),
       };
 
       customerData['deposit'] = _depositController.text.trim();

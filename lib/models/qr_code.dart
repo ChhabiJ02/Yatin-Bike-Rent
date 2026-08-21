@@ -8,7 +8,7 @@ class QRCodePayment {
   final String description;
   final bool isActive;
 
-  QRCodePayment({
+  const QRCodePayment({
     required this.id,
     this.name = '',
     this.imageUrl = '',
@@ -48,12 +48,12 @@ class QRCodePayment {
 
   factory QRCodePayment.fromMap(Map<String, dynamic> map) {
     return QRCodePayment(
-      id: map['id'] as String,
-      name: map['name'] ?? '',
-      imageUrl: map['imageUrl'] ?? '',
-      upiId: map['upiId'] ?? '',
-      description: map['description'] ?? '',
-      isActive: map['isActive'] ?? true,
+      id: _stringValue(map['id']),
+      name: _stringValue(map['name']),
+      imageUrl: _stringValue(map['imageUrl']),
+      upiId: _stringValue(map['upiId']),
+      description: _stringValue(map['description']),
+      isActive: map['isActive'] is bool ? map['isActive'] as bool : true,
     );
   }
 
@@ -63,13 +63,17 @@ class QRCodePayment {
     final data = doc.data() ?? {};
     return QRCodePayment(
       id: doc.id,
-      name: data['name'] ?? '',
-      imageUrl: data['imageUrl'] ?? '',
-      upiId: data['upiId'] ?? '',
-      description: data['description'] ?? '',
-      isActive: data['isActive'] ?? true,
+      name: _stringValue(data['name']),
+      imageUrl: _stringValue(data['imageUrl']),
+      upiId: _stringValue(data['upiId']),
+      description: _stringValue(data['description']),
+      isActive: data['isActive'] is bool ? data['isActive'] as bool : true,
     );
   }
 
+  bool get requiresQr => imageUrl.isNotEmpty || upiId.isNotEmpty;
+
   bool get isEmpty => id.isEmpty && name.isEmpty && imageUrl.isEmpty;
 }
+
+String _stringValue(Object? value) => value?.toString() ?? '';
