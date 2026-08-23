@@ -1,25 +1,24 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // 🟢 Main Green Theme Colors
-  static const primaryGreen = Color(0xFF0F8A4B);
-  static const darkGreen = Color(0xFF074726);
-  static const lightGreenBg = Color(0xFFF0FDF4);
-  static const mint = Color(0xFF00FF88);
-  
-  // 🟢 Missing Variables Added (Green Theme Match)
-  static const amber = Color(0xFFD97706); // Warm Amber / Orange for Pending status
-  static const navy = Color(0xFF0F8A4B);  // Replacing Navy with Primary Green
+  // Monochrome booking interface with red reserved for destructive states.
+  static const primaryGreen = Color(0xFF111111);
+  static const darkGreen = Color(0xFF000000);
+  static const lightGreenBg = Color(0xFFF7F7F7);
+  static const mint = Color(0xFF1B8A5A);
+
+  static const amber = Color(0xFFD97706);
+  static const navy = Color(0xFF111111);
   
   // ⚪ Canvas & Neutral Colors
-  static const paper = Color(0xFFF8FAFC);
+  static const paper = Color(0xFFFAFAFA);
   static const card = Colors.white;
-  static const ink = Color(0xFF1E293B);
-  static const muted = Color(0xFF64748B);
+  static const ink = Color(0xFF111111);
+  static const muted = Color(0xFF6B6B6B);
 
-  // 🟢 Accent
-  static const ember = Color(0xFF0F8A4B); 
-  static const sky = Color(0xFF38A5FF);
+  // Primary actions use black; red is reserved for destructive emphasis.
+  static const ember = Color(0xFF111111);
+  static const sky = Color(0xFFE53935);
 
   // 🌈 Gradients
   static const splashGradient = LinearGradient(
@@ -52,17 +51,34 @@ class AppTheme {
         secondary: AppColors.ember,
         surface: AppColors.card,
         onSurface: AppColors.ink,
-        error: Colors.red,
+        error: Color(0xFFE53935),
         onPrimary: Colors.white,
         onSecondary: Colors.white,
         onError: Colors.white,
-        background: AppColors.paper,
-        onBackground: AppColors.ink,
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.primaryGreen,
         foregroundColor: Colors.white,
         elevation: 0,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.ink,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.ink,
+          side: const BorderSide(color: Color(0xFFD6D6D6)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
       ),
       textTheme: const TextTheme(
         bodyLarge: TextStyle(color: AppColors.ink),
@@ -72,7 +88,7 @@ class AppTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Colors.grey.shade300, width: 1),
+          side: const BorderSide(color: Color(0xFFE0E0E0), width: 1),
         ),
         clipBehavior: Clip.antiAlias,
       ),
@@ -82,15 +98,15 @@ class AppTheme {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.primaryGreen, width: 2),
+          borderSide: const BorderSide(color: AppColors.ink, width: 2),
         ),
       ),
     );
@@ -102,7 +118,7 @@ class AppTheme {
       borderRadius: BorderRadius.circular(12),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.05),
+          color: Colors.black.withValues(alpha: 0.05),
           blurRadius: 10,
           offset: const Offset(0, 4),
         ),

@@ -15,6 +15,26 @@ import '../services/auth_service.dart';
 class AdminDashboard extends StatelessWidget {
   const AdminDashboard({super.key});
 
+  double _parseAmount(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString().replaceAll(',', '').trim() ?? '') ?? 0.0;
+  }
+
+  double _pendingAmount(Map<String, dynamic> data) {
+    final billAmount = _parseAmount(data['billAmount']);
+    final payment = data['payment'];
+    final paymentMap = payment is Map
+        ? Map<String, dynamic>.from(payment)
+        : <String, dynamic>{};
+    final paidAmount = _parseAmount(
+      paymentMap['paymentAmount'] ??
+          paymentMap['paidAmount'] ??
+          data['paidAmount'] ??
+          data['paymentAmount'],
+    );
+    return (billAmount - paidAmount).clamp(0.0, double.infinity).toDouble();
+  }
+
   // Today's Date Comparison Helper Function
   bool _isToday(dynamic dateField) {
     if (dateField == null) return false;
@@ -43,8 +63,8 @@ class AdminDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const primaryGreen = Color(0xFF0F8A4B);
-    const darkGreenGradient = Color(0xFF0B6B3A);
+    const primaryGreen = Color(0xFF111111);
+    const darkGreenGradient = Color(0xFF000000);
     const bgBackgroundColor = Color(0xFFF5F7FA);
 
     return Scaffold(
@@ -178,78 +198,6 @@ class AdminDashboard extends StatelessWidget {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // ---------------- 🟩 3. GREEN HERO HEADER ----------------
-            Container(
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [primaryGreen, darkGreenGradient],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(28),
-                  bottomRight: Radius.circular(28),
-                ),
-              ),
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-              child: Stack(
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Welcome back,',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      StreamBuilder(
-                        stream: AuthService.currentUserProfileStream(),
-                        builder: (context, snapshot) {
-                          final data = snapshot.data?.data();
-                          final name = (data?['name'] as String?)?.trim();
-                          return Text(
-                            name?.isNotEmpty == true ? name! : 'Admin',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 26,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Have a great day!',
-                        style: TextStyle(color: Colors.white70, fontSize: 14),
-                      ),
-                      const SizedBox(height: 60),
-                    ],
-                  ),
-                  Positioned(
-                    right: -10,
-                    bottom: 0,
-                    child: Image.asset(
-                      'assets/logos/png/dash_header1.webp',
-                      height: 150,
-                      width: 200,
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => const Icon(
-                        Icons.two_wheeler,
-                        size: 100,
-                        color: Colors.white24,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -496,24 +444,7 @@ class AdminDashboard extends StatelessWidget {
                             for (var doc in docs) {
                               final data = doc.data() as Map<String, dynamic>;
 
-                              // Safely parse billAmount
-                              final billAmountStr =
-                                  data['billAmount'] as String?;
-                              final double billAmount =
-                                  double.tryParse(billAmountStr ?? '') ?? 0.0;
-
-                              // Safely parse payment.paymentAmount
-                              double paymentAmount = 0.0;
-                              final paymentMap =
-                                  data['payment'] as Map<String, dynamic>?;
-                              if (paymentMap != null) {
-                                final paStr =
-                                    paymentMap['paymentAmount'] as String?;
-                                paymentAmount =
-                                    double.tryParse(paStr ?? '') ?? 0.0;
-                              }
-
-                              final double pending = billAmount - paymentAmount;
+                                final pending = _pendingAmount(data);
 
                               if (pending > 0) {
                                 totalPendingAmount += pending;
@@ -807,7 +738,7 @@ class AdminDashboard extends StatelessWidget {
               Text(
                 subtitle,
                 style: TextStyle(
-                  color: titleColor.withOpacity(0.8),
+                  color: titleColor.withValues(alpha: 0.8),
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
                 ),
@@ -874,7 +805,7 @@ class AdminDashboard extends StatelessWidget {
             color: const Color(0xFFF0FDF4),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, color: const Color(0xFF0F8A4B), size: 20),
+          child: Icon(icon, color: const Color(0xFF111111), size: 20),
         ),
         title: Text(
           title,

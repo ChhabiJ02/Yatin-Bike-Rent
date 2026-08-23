@@ -532,6 +532,11 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
         foregroundColor: Colors.white,
         backgroundColor: AppColors.primaryGreen,
         elevation: 1,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back to Dashboard',
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         title: Text(
           appBarTitle,
           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),

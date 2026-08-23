@@ -15,7 +15,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  static const primaryGreen = Color(0xFF0F8A4B);
+  static const primaryGreen = Color(0xFF111111);
 
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
@@ -81,7 +81,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: const [
                         CircleAvatar(
                           radius: 30,
-                          backgroundColor: Color(0xFFF0FDF4),
+                          backgroundColor: Color(0xFFF5F5F5),
                           child: Icon(
                             Icons.camera_alt,
                             color: primaryGreen,
@@ -185,7 +185,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: const Color(0xFFFAFAFA),
       appBar: AppBar(
         backgroundColor: primaryGreen,
         elevation: 0,

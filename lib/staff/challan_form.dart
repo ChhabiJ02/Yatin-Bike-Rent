@@ -108,7 +108,7 @@ class ChallanForm {
   static final CollectionReference<Customer> _customersCollection =
       FirebaseFirestore.instance.collection('customers').withConverter<Customer>(
             fromFirestore: (snapshot, _) => Customer.fromFirestore(snapshot),
-            toFirestore: (customer, _) => customer.toMap() ?? {},
+            toFirestore: (customer, _) => customer.toMap(),
           );
 
   static CollectionReference<Customer> get customersCollection => _customersCollection;
@@ -451,7 +451,6 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
           label: 'Aadhaar / License - Front',
           imageUrl: _customerDocuments?.idFront,
           folder: 'documents',
-          isRequired: true,
           onImageSelected: (url) {
             setState(() {
               _customerDocuments =
@@ -463,7 +462,6 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
           label: 'Aadhaar / License - Back',
           imageUrl: _customerDocuments?.idBack,
           folder: 'documents',
-          isRequired: true,
           onImageSelected: (url) {
             setState(() {
               _customerDocuments =
@@ -475,7 +473,6 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
           label: 'Customer with Vehicle/Ticket',
           imageUrl: _customerDocuments?.customerPhoto,
           folder: 'customer',
-          isRequired: true,
           onImageSelected: (url) {
             setState(() {
               _customerDocuments = (_customerDocuments ?? CustomerDocuments())
@@ -847,7 +844,6 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                         }
 
                         try {
-                          final navigator = Navigator.of(context);
                           final entry = ChallanEntry(
                             fyear: fyearController.text.trim(),
                             custCode: customerCodeController.text.trim(),
@@ -878,9 +874,10 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
                           );
 
                           await _saveChallanEntry(entry);
-                          navigator.pop(true);
+                          if (!context.mounted) return;
+                          Navigator.of(context).pop(true);
                         } catch (e) {
-                          if (!mounted) return;
+                          if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text('Error saving: $e')),
                           );

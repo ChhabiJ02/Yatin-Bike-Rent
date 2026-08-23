@@ -4,6 +4,7 @@ import '../admin/admin_dashboard.dart';
 import '../customer/customer_dashboard.dart';
 import '../services/auth_service.dart';
 import '../staff/staff_dashboard.dart';
+import '../theme/app_theme.dart';
 import 'login_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -24,10 +25,9 @@ class _SplashScreenState extends State<SplashScreen>
   Timer? _textTimer;
   Timer? _routeTimer;
 
-  // 🎨 Green Theme Constants
-  static const Color primaryGreen = Color(0xFF0F8A4B);
-  static const Color darkGreen = Color(0xFF074726);
-  static const Color mintGreen = Color(0xFF00FF88);
+  static const Color primaryColor = AppColors.ink;
+  static const Color darkColor = Colors.black;
+  static const Color accentColor = Colors.white;
 
   @override
   void initState() {
@@ -139,7 +139,7 @@ class _SplashScreenState extends State<SplashScreen>
                 height: constraints.maxHeight,
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [primaryGreen, darkGreen],
+                    colors: [primaryColor, darkColor],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                   ),
@@ -166,7 +166,7 @@ class _SplashScreenState extends State<SplashScreen>
                                     color: Colors.white,
                                     boxShadow: [
                                       BoxShadow(
-                                        color: mintGreen.withValues(alpha: 0.35),
+                                        color: accentColor.withValues(alpha: 0.18),
                                         blurRadius: 35,
                                         spreadRadius: 8,
                                       ),
@@ -216,11 +216,11 @@ class _SplashScreenState extends State<SplashScreen>
                                     width: 60,
                                     height: 4,
                                     decoration: BoxDecoration(
-                                      color: mintGreen,
+                                      color: accentColor,
                                       borderRadius: BorderRadius.circular(2),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: mintGreen.withValues(alpha: 0.6),
+                                          color: accentColor.withValues(alpha: 0.35),
                                           blurRadius: 8,
                                         ),
                                       ],
@@ -254,7 +254,7 @@ class _SplashScreenState extends State<SplashScreen>
                                         padding: EdgeInsets.all(3),
                                         child: CircularProgressIndicator(
                                           valueColor: AlwaysStoppedAnimation<Color>(
-                                            mintGreen,
+                                            accentColor,
                                           ),
                                           strokeWidth: 3,
                                         ),

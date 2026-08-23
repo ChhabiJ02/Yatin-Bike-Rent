@@ -29,9 +29,9 @@ class _LoginScreenState extends State<LoginScreen> {
   static const String _rememberMeKey = 'remember_me';
 
   // 🎨 Theme Colors Matching the Provided Dashboard Image
-  static const primaryGreen = Color(0xFF0F8A4B);
-  static const darkGreenGradient = Color(0xFF0B6B3A);
-  static const accentLightGreen = Color(0xFFF0FDF4);
+  static const primaryGreen = Color(0xFF111111);
+  static const darkGreenGradient = Color(0xFF000000);
+  static const accentLightGreen = Color(0xFFF5F5F5);
 
   bool obscurePassword = true;
   bool rememberMe = false;

@@ -20,9 +20,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool obscureConfirmPassword = true;
 
   // 🎨 Theme Colors Matching Login Screen & Green Theme
-  static const primaryGreen = Color(0xFF0F8A4B);
-  static const darkGreenGradient = Color(0xFF0B6B3A);
-  static const accentLightGreen = Color(0xFFF0FDF4);
+  static const primaryGreen = Color(0xFF111111);
+  static const darkGreenGradient = Color(0xFF000000);
+  static const accentLightGreen = Color(0xFFF5F5F5);
 
   @override
   void dispose() {
@@ -343,8 +343,8 @@ class _VerificationPendingScreenState
   bool isChecking = false;
   bool isSending = false;
 
-  static const primaryGreen = Color(0xFF0F8A4B);
-  static const darkGreenGradient = Color(0xFF0B6B3A);
+  static const primaryGreen = Color(0xFF111111);
+  static const darkGreenGradient = Color(0xFF000000);
 
   Future<void> _checkVerification() async {
     setState(() => isChecking = true);
