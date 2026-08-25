@@ -9,6 +9,7 @@ class FormImagePicker extends StatefulWidget {
   final String folder;
   final Function(String?) onImageSelected;
   final bool isUploading;
+  final bool compact;
 
   const FormImagePicker({
     super.key,
@@ -17,6 +18,7 @@ class FormImagePicker extends StatefulWidget {
     required this.folder,
     required this.onImageSelected,
     this.isUploading = false,
+    this.compact = false,
   });
 
   @override
@@ -30,14 +32,69 @@ class _FormImagePickerState extends State<FormImagePicker> {
   Widget build(BuildContext context) {
     final imageUrl = widget.imageUrl;
 
+    if (widget.compact) {
+      return InkWell(
+        onTap: _isUploading ? null : _showImageSourceActionSheet,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          height: 76,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFE2E2E2)),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                imageUrl != null && imageUrl.isNotEmpty
+                    ? Icons.check_box_outlined
+                    : Icons.badge_outlined,
+                size: 28,
+                color: Colors.black,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  widget.label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    height: 1.35,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+              if (_isUploading)
+                const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 21),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [
         // Image box container
         Container(
-          width: 100,
-          height: 100,
+          width: widget.compact ? double.infinity : 100,
+          height: widget.compact ? 58 : 100,
           decoration: BoxDecoration(
             color: Colors.grey.shade200,
             borderRadius: BorderRadius.circular(12),
@@ -53,24 +110,24 @@ class _FormImagePickerState extends State<FormImagePicker> {
               ? const Center(child: CircularProgressIndicator())
               : (imageUrl == null || imageUrl.isEmpty
                   ? IconButton(
-                      icon: const Icon(Icons.add_a_photo, color: Colors.grey, size: 32),
+                      icon: Icon(Icons.add_a_photo, color: Colors.grey, size: widget.compact ? 22 : 32),
                       onPressed: _showImageSourceActionSheet,
                     )
                   : null),
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: widget.compact ? 4 : 6),
         Text(
           widget.label,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 12,
+          style: TextStyle(
+            fontSize: widget.compact ? 10 : 12,
             fontWeight: FontWeight.w500,
             color: Colors.black87,
           ),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
-        if (!_isUploading && (imageUrl == null || imageUrl.isEmpty))
+        if (!widget.compact && !_isUploading && (imageUrl == null || imageUrl.isEmpty))
           const Text(
             'No image selected',
             textAlign: TextAlign.center,

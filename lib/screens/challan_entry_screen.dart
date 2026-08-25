@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -13,7 +15,6 @@ import '../services/challan_service.dart';
 import '../services/qr_payment_service.dart';
 import '../services/rental_service.dart';
 import '../admin/customer_bookings_screen.dart';
-import 'transportation_details_screen.dart';
 
 class ChallanEntryScreen extends StatefulWidget {
   final String? custCode;
@@ -39,6 +40,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
   // Controllers
   final _custCodeController = TextEditingController();
+  final _customerNameSearchController = TextEditingController();
   final _dateController = TextEditingController();
   final _fyearController = TextEditingController();
   final _partyNameController = TextEditingController();
@@ -73,6 +75,10 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   final _dropDateController = TextEditingController();
   final _dropTimeController = TextEditingController();
   final _additionalInfoController = TextEditingController();
+  final _transportDocumentPendingController = TextEditingController();
+  final _transportDlrMailController = TextEditingController();
+  final _transportPickupLocationController = TextEditingController();
+  final _transportStartingKmController = TextEditingController();
 
   // Customer Mobile Verification Flow States
   int _customerVerificationStage = 0; // 0: Mobile Input, 1: Choice, 2: Scanner, 3: Full Form
@@ -80,11 +86,15 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   DocumentSnapshot<Map<String, dynamic>>? _returningCustomer;
   String _lastSearchedPhone = '';
   int _searchRequestId = 0;
+  Timer? _customerNameSearchDebounce;
+  List<DocumentSnapshot<Map<String, dynamic>>> _customerNameMatches = [];
+  bool _isSearchingCustomerName = false;
+  String? _customerNameSearchError;
   bool _isScanningFront = false;
   
   // Wizard Step State
   int _currentStep = 0;
-  final int _totalSteps = 5;
+  final int _totalSteps = 3;
 
   // Add-ons State
   bool _hasExtraHelmet = false;
@@ -102,6 +112,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   TimeOfDay? _vehicleGivenTime;
   DateTime? _vehicleReturnDate;
   TimeOfDay? _vehicleReturnTime;
+  DateTime? _transportPickupDateTime;
 
   // Payment Options
   String _selectedPaymentMode = 'Cash';
@@ -359,7 +370,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
       if (!mounted || requestId != _searchRequestId) return;
       if (match != null) {
-        _prefillReturningCustomer(match);
+        await _loadExistingData(customer: match);
         setState(() {
           _returningCustomer = match;
           _isCheckingCustomer = false;
@@ -381,19 +392,61 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     }
   }
 
-  void _prefillReturningCustomer(DocumentSnapshot<Map<String, dynamic>> snapshot) {
-    final data = snapshot.data() ?? <String, dynamic>{};
-    _partyNameController.text = (data['name'] ?? data['partyName'] ?? '').toString();
-    _alternatePhoneController.text = (data['alternatePhone'] ?? '').toString();
-    _aadharController.text = (data['aadharNo'] ?? '').toString();
-    _licenseController.text = (data['licenceNo'] ?? data['licenseNo'] ?? '').toString();
-    _customerCityController.text = (data['city'] ?? '').toString();
-
-    if (data['customerDocuments'] != null) {
-      _customerDocuments = CustomerDocuments.fromMap(
-        Map<String, dynamic>.from(data['customerDocuments']),
-      );
+  void _onCustomerNameSearchChanged(String value) {
+    _customerNameSearchDebounce?.cancel();
+    final query = value.trim().toLowerCase();
+    if (query.isEmpty) {
+      setState(() {
+        _customerNameMatches = [];
+        _isSearchingCustomerName = false;
+        _customerNameSearchError = null;
+      });
+      return;
     }
+
+    setState(() => _isSearchingCustomerName = true);
+    _customerNameSearchDebounce = Timer(const Duration(milliseconds: 300), () {
+      _searchCustomersByName(query);
+    });
+  }
+
+  Future<void> _searchCustomersByName(String query) async {
+    try {
+      final result = await _customersCollection.get();
+      if (!mounted || query != _customerNameSearchController.text.trim().toLowerCase()) return;
+
+      final matches = result.docs.where((doc) {
+        final data = doc.data();
+        final name = (data['partyName'] ?? data['name'] ?? data['displayName'] ?? '').toString().toLowerCase();
+        return name.contains(query);
+      }).toList();
+
+      setState(() {
+        _customerNameMatches = matches;
+        _isSearchingCustomerName = false;
+        _customerNameSearchError = matches.isEmpty
+            ? 'User not found by this name. Please enter phone number.'
+            : null;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isSearchingCustomerName = false;
+          _customerNameSearchError = 'Unable to search customers. Please enter phone number.';
+        });
+      }
+    }
+  }
+
+  Future<void> _selectCustomerName(DocumentSnapshot<Map<String, dynamic>> customer) async {
+    await _loadExistingData(customer: customer);
+    _customerNameSearchController.clear();
+    setState(() {
+      _customerNameMatches = [];
+      _customerNameSearchError = null;
+      _returningCustomer = customer;
+      _customerVerificationStage = 3;
+    });
   }
 
   @override
@@ -465,9 +518,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     }
   }
 
-  Future<void> _loadExistingData() async {
-    if (widget.custCode == null) return;
-    final doc = await _customersCollection.doc(widget.custCode).get();
+  Future<void> _loadExistingData({DocumentSnapshot<Map<String, dynamic>>? customer}) async {
+    if (customer == null && widget.custCode == null) return;
+    final doc = customer ?? await _customersCollection.doc(widget.custCode).get();
     if (doc.exists && mounted) {
       final data = doc.data()!;
       final customer = Customer.fromFirestore(doc);
@@ -491,10 +544,10 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       _dateController.text = data['sDate'] ?? _dateController.text;
       _fyearController.text = data['fyear'] ?? _fyearController.text;
 
-      if (data['vehicleEntry'] != null) {
-        final ve = data['vehicleEntry'];
-        _vehicleEntryNoController.text = ve['no'] ?? '';
-        _vehicleEntryNameController.text = ve['name'] ?? '';
+      if (data['vehicleEntry'] is Map) {
+        final ve = Map<String, dynamic>.from(data['vehicleEntry'] as Map);
+        _vehicleEntryNoController.text = (ve['no'] ?? ve['number'] ?? '').toString();
+        _vehicleEntryNameController.text = (ve['name'] ?? ve['vehicleName'] ?? '').toString();
       }
 
       if (data['customerDocuments'] != null) {
@@ -507,6 +560,12 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           Map<String, dynamic>.from(data['vehicleHandover']),
         );
         _vehicleNumberController.text = _vehicleHandover!.vehicleNumber;
+        if (_vehicleEntryNoController.text.isEmpty) {
+          _vehicleEntryNoController.text = _vehicleHandover!.vehicleNumber;
+        }
+        if (_vehicleEntryNameController.text.isEmpty) {
+          _vehicleEntryNameController.text = _vehicleHandover!.vehicleName;
+        }
         _pickupLocationController.text = _vehicleHandover!.vehiclePickupLocation;
         _returnLocationController.text = _vehicleHandover!.vehicleReturnLocation;
         if (_vehicleHandover!.vehicleGivenDate.isNotEmpty) {
@@ -520,6 +579,20 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         }
         if (_vehicleHandover!.vehicleReturnTime.isNotEmpty) {
           _vehicleReturnTime = _parseTime(_vehicleHandover!.vehicleReturnTime);
+        }
+      }
+      if (_vehicleEntryNoController.text.isEmpty) {
+        _vehicleEntryNoController.text = (data['vehicleNumber'] ?? data['vehicleNo'] ?? '').toString();
+      }
+      if (_vehicleController.text.isEmpty) {
+        _vehicleController.text = (data['vehicleName'] ?? '').toString();
+      }
+      if (_vehicleEntryNoController.text.isNotEmpty) {
+        final vehicleDoc = await RentalService.findVehicleByNumber(
+          _vehicleEntryNoController.text.trim(),
+        );
+        if (vehicleDoc != null && vehicleDoc.exists) {
+          _populateVehicleEntryFields(vehicleDoc);
         }
       }
       if (data['travelDetails'] != null) {
@@ -538,9 +611,24 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         _transportation = Transportation.fromMap(
           Map<String, dynamic>.from(data['transportation']),
         );
+        _transportDocumentPendingController.text = _transportation!.documentPending;
+        _transportDlrMailController.text = _transportation!.dlrMail;
+        _transportPickupLocationController.text = _transportation!.pickupLocation;
+        _transportStartingKmController.text = _transportation!.startingKm;
+        final pickupDate = _parseDate(_transportation!.pickupDate);
+        final pickupTime = _parseTime(_transportation!.pickupTime);
+        if (pickupDate != null) {
+          _transportPickupDateTime = DateTime(
+            pickupDate.year,
+            pickupDate.month,
+            pickupDate.day,
+            pickupTime?.hour ?? 0,
+            pickupTime?.minute ?? 0,
+          );
+        }
       }
       _selectedQRCodeId = data['qrCodeId'];
-      if (_selectedQRCodeId != null && _selectedQRCodeId!.isNotEmpty) {
+      if ((_selectedQRCodeId ?? '').isNotEmpty) {
         final qrDoc = await _paymentSettingsCollection.doc(_selectedQRCodeId).get();
         if (qrDoc.exists) {
           final qrData = qrDoc.data() as Map<String, dynamic>;
@@ -607,11 +695,13 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
   @override
   void dispose() {
+    _customerNameSearchDebounce?.cancel();
     _daysController.removeListener(_calculateBillAmount);
     _rateController.removeListener(_calculateBillAmount);
     _phoneController.removeListener(_onPhoneChanged);
 
     _custCodeController.dispose();
+    _customerNameSearchController.dispose();
     _dateController.dispose();
     _fyearController.dispose();
     _partyNameController.dispose();
@@ -641,6 +731,10 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     _dropDateController.dispose();
     _dropTimeController.dispose();
     _additionalInfoController.dispose();
+    _transportDocumentPendingController.dispose();
+    _transportDlrMailController.dispose();
+    _transportPickupLocationController.dispose();
+    _transportStartingKmController.dispose();
     for (var fieldFocus in _focusNodes.values) {
       fieldFocus.focusNode.dispose();
     }
@@ -671,13 +765,15 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
                   : const Icon(Icons.delete_outline),
             ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(80.0),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12.0),
-            child: _buildStepIndicator(),
-          ),
-        ),
+        bottom: (!_isEditMode && _customerVerificationStage == 0)
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(80.0),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12.0),
+                  child: _buildStepIndicator(),
+                ),
+              ),
       ),
       body: Form(
         key: _formKey,
@@ -685,9 +781,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           index: _currentStep,
           children: [
             _buildCustomerStep(),
-            _buildVehicleStep(),
-            _buildRentalStep(),
-            _buildDocumentsStep(),
+            _buildBookingDetailsStep(),
             _buildReviewStep(),
           ],
         ),
@@ -698,14 +792,44 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
   Widget _buildStepIndicator() {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        _buildStepIndicatorItem(icon: Icons.person, label: 'Customer', step: 0),
-        _buildStepIndicatorItem(icon: Icons.directions_car, label: 'Vehicle', step: 1),
-        _buildStepIndicatorItem(icon: Icons.calendar_today, label: 'Rental', step: 2),
-        _buildStepIndicatorItem(icon: Icons.folder, label: 'Documents', step: 3),
-        _buildStepIndicatorItem(icon: Icons.rate_review, label: 'Review', step: 4),
+        Expanded(
+          child: _buildStepIndicatorItem(icon: Icons.person, label: 'Customer', step: 0),
+        ),
+        Expanded(
+          child: _buildStepIndicatorItem(icon: Icons.directions_car, label: 'Booking Details', step: 1),
+        ),
+        Expanded(
+          child: _buildStepIndicatorItem(icon: Icons.payment, label: 'Payment', step: 2),
+        ),
       ],
+    );
+  }
+
+  Widget _buildStepIndicatorItem({required IconData icon, required String label, required int step}) {
+    final bool isActive = _currentStep == step;
+    final bool isCompleted = _currentStep > step;
+    final color = isCompleted || isActive ? Colors.white : Colors.white.withValues(alpha: 0.5);
+    final fontWeight = isActive ? FontWeight.bold : FontWeight.normal;
+
+    return InkWell(
+      onTap: step <= _currentStep ? () => setState(() => _currentStep = step) : null,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: color, fontWeight: fontWeight, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -723,22 +847,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     );
   }
 
-  Widget _buildStepIndicatorItem({required IconData icon, required String label, required int step}) {
-    final bool isActive = _currentStep == step;
-    final bool isCompleted = _currentStep > step;
-    final color = isCompleted ? Colors.white : (isActive ? Colors.white : Colors.white.withOpacity(0.5));
-    final fontWeight = isActive ? FontWeight.bold : FontWeight.normal;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: color),
-        const SizedBox(height: 4),
-        Text(label, style: TextStyle(color: color, fontWeight: fontWeight, fontSize: 12)),
-      ],
-    );
-  }
-
   // Updated Customer Step with Auto Fetching UI Flow
   Widget _buildCustomerStep() {
     if (!_isEditMode && _customerVerificationStage == 0) {
@@ -752,47 +860,38 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildSectionHeader('Customer Details'),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12.0),
-            child: IntrinsicHeight(
-              child: Row(
+          _buildCustomerSectionTitle('Customer Details'),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final details = Column(
+                children: [
+                  _buildCustomerInfoCard(Icons.person_outline, 'Name', _partyNameController),
+                  _buildCustomerInfoCard(Icons.phone_outlined, 'Mobile Number', _phoneController,
+                      keyboardType: TextInputType.phone),
+                  _buildCustomerInfoCard(Icons.chat_outlined, 'WhatsApp Number', _alternatePhoneController,
+                      keyboardType: TextInputType.phone),
+                ],
+              );
+              final photo = _buildCustomerPhotoCard();
+
+              return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Flexible(
-                    flex: 2,
-                    child: FormImagePicker(
-                        label: 'Customer Photo',
-                        imageUrl: _customerDocuments?.customerPhoto,
-                        folder: 'documents/${_custCodeController.text}/customer',
-                        onImageSelected: (url) {
-                          setState(() {
-                            _customerDocuments = (_customerDocuments ?? CustomerDocuments()).copyWith(customerPhoto: url);
-                          });
-                        }),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 3,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: [
-                        _buildTextField(_partyNameController, 'Customer Name'),
-                        _buildTextField(_phoneController, 'Mobile Number', keyboardType: TextInputType.phone),
-                        _buildTextField(_alternatePhoneController, 'WhatsApp Number', keyboardType: TextInputType.phone),
-                      ],
-                    ),
-                  ),
+                  Expanded(child: details),
+                  const SizedBox(width: 10),
+                  SizedBox(width: constraints.maxWidth < 430 ? 108 : 132, child: photo),
                 ],
-              ),
-            ),
+              );
+            },
           ),
+          const SizedBox(height: 18),
+          _buildCustomerSectionTitle('Identity Details'),
           _buildTextField(
-            _aadharController, 
+            _aadharController,
             'ID/Aadhaar Number',
             keyboardType: TextInputType.number,
             inputFormatters: [
@@ -802,7 +901,90 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           ),
           _buildTextField(_licenseController, 'Driver License Number'),
           _buildTextField(_customerCityController, 'City'),
+          _buildCustomerSectionTitle('Identity Proof (Select 4 Photos)'),
+          _buildDocumentSection(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCustomerSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Text(
+        title,
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.ink),
+      ),
+    );
+  }
+
+  Widget _buildCustomerInfoCard(
+    IconData icon,
+    String label,
+    TextEditingController controller, {
+    TextInputType? keyboardType,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE2E2E2)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 24, color: AppColors.ink),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(fontSize: 10, color: AppColors.muted),
+                ),
+                TextFormField(
+                  controller: controller,
+                  keyboardType: keyboardType,
+                  inputFormatters: keyboardType == TextInputType.phone
+                      ? [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(10),
+                        ]
+                      : null,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                    isDense: true,
+                  ),
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCustomerPhotoCard() {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE2E2E2)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: FormImagePicker(
+        label: 'Face Photo',
+        imageUrl: _customerDocuments?.customerPhoto,
+        folder: 'documents/${_custCodeController.text}/customer',
+        onImageSelected: (url) {
+          setState(() {
+            _customerDocuments = (_customerDocuments ?? CustomerDocuments()).copyWith(customerPhoto: url);
+          });
+        },
       ),
     );
   }
@@ -855,6 +1037,65 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.black, width: 1.5)),
             ),
           ),
+          const SizedBox(height: 18),
+          TextFormField(
+            controller: _customerNameSearchController,
+            onChanged: _onCustomerNameSearchChanged,
+            textCapitalization: TextCapitalization.words,
+            decoration: InputDecoration(
+              labelText: 'Search by customer name',
+              hintText: 'Type customer name',
+              prefixIcon: const Icon(Icons.person_search),
+              suffixIcon: _isSearchingCustomerName
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                    )
+                  : null,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+          if (_customerNameMatches.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 220),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: _customerNameMatches.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final customer = _customerNameMatches[index];
+                  final data = customer.data() ?? <String, dynamic>{};
+                  final name = (data['partyName'] ?? data['name'] ?? data['displayName'] ?? '').toString();
+                  return InkWell(
+                    onTap: () => _selectCustomerName(customer),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_outline),
+                          const SizedBox(width: 16),
+                          Expanded(child: Text(name)),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+          if (_customerNameSearchError != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _customerNameSearchError!,
+              style: const TextStyle(color: Colors.red, fontSize: 13),
+            ),
+          ],
           if (_returningCustomer != null) ...[
             const SizedBox(height: 20),
             _buildReturningCustomerCard(),
@@ -1012,76 +1253,60 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     );
   }
 
-  Widget _buildVehicleStep() {
+  Widget _buildBookingDetailsStep() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _buildSectionHeader('Booking Details'),
           _buildVehicleEntrySection(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRentalStep() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildSectionHeader('Rental & Booking'),
+          const SizedBox(height: 12),
           _buildVehicleHandoverSection(),
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
           _buildBookingSection(),
+          const SizedBox(height: 12),
+          _buildTransportationPickupSection(),
         ],
       ),
     );
   }
 
-  Widget _buildDocumentsStep() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildSectionHeader('Upload Documents'),
-          _buildDocumentSection(),
-          const SizedBox(height: 24),
-          _buildSectionHeader('Transportation (Optional)'),
-          OutlinedButton.icon(
-            onPressed: () async {
-              final result = await Navigator.push<Transportation>(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => TransportationDetailsScreen(
-                    initialData: _transportation,
-                  ),
-                ),
+  Widget _buildTransportationPickupSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildSectionHeader('Pickup Details'),
+        _buildTextField(_transportDocumentPendingController, 'Document Pending'),
+        _buildTextField(
+          _transportDlrMailController,
+          'DLR Mail',
+          keyboardType: TextInputType.emailAddress,
+        ),
+        _buildDateTimePicker(
+          'Pickup Date and Time',
+          _transportPickupDateTime,
+          _transportPickupDateTime == null ? null : TimeOfDay.fromDateTime(_transportPickupDateTime!),
+          (date, time) {
+            if (date == null) return;
+            setState(() {
+              _transportPickupDateTime = DateTime(
+                date.year,
+                date.month,
+                date.day,
+                time?.hour ?? 0,
+                time?.minute ?? 0,
               );
-              if (result != null && mounted) {
-                setState(() {
-                  _transportation = result;
-                });
-              }
-            },
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              foregroundColor: AppColors.ember,
-              side: const BorderSide(color: AppColors.ember),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            icon: const Icon(Icons.local_shipping),
-            label: Text(
-              _transportation != null && !_transportation!.isEmpty
-                  ? 'Edit Transportation Details'
-                  : 'Add Transportation Details',
-            ),
-          ),
-        ],
-      ),
+            });
+          },
+        ),
+        _buildTextField(_transportPickupLocationController, 'Pickup Location'),
+        _buildTextField(
+          _transportStartingKmController,
+          'Starting KM',
+          keyboardType: TextInputType.number,
+        ),
+      ],
     );
   }
 
@@ -1102,7 +1327,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           _buildTextField(_depositController, 'Deposit Amount (₹)', keyboardType: TextInputType.number),
           
           _buildPaymentModeDropdown(),
-          if (_selectedQRCodeImageUrl?.isNotEmpty == true) ...[
+          if ((_selectedQRCodeImageUrl ?? '').isNotEmpty) ...[
             const SizedBox(height: 12),
             _buildQRCodeImagePreview(),
           ],
@@ -1271,7 +1496,8 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           children: [
             Expanded(
               child: FormImagePicker(
-                label: 'ID - Front',
+                label: 'Aadhar Card\nFront',
+                compact: true,
                 imageUrl: _customerDocuments?.idFront,
                 folder: 'documents/$code/documents',
                 onImageSelected: (url) {
@@ -1285,7 +1511,8 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: FormImagePicker(
-                label: 'ID - Back',
+                label: 'Aadhar Card\nBack',
+                compact: true,
                 imageUrl: _customerDocuments?.idBack,
                 folder: 'documents/$code/documents',
                 onImageSelected: (url) {
@@ -1304,7 +1531,8 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           children: [
             Expanded(
               child: FormImagePicker(
-                label: 'Customer Photo',
+                label: 'Driving License\nFront',
+                compact: true,
                 imageUrl: _customerDocuments?.customerPhoto,
                 folder: 'documents/$code/customer',
                 onImageSelected: (url) {
@@ -1318,7 +1546,8 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: FormImagePicker(
-                label: 'Travel Ticket',
+                label: 'Driving License\nBack',
+                compact: true,
                 imageUrl: _customerDocuments?.travelTicketPhoto,
                 folder: 'documents/$code/travel',
                 onImageSelected: (url) {
@@ -1469,7 +1698,8 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   }
 
   Widget _buildQRCodeImagePreview() {
-    if (_selectedQRCodeImageUrl == null || _selectedQRCodeImageUrl!.isEmpty) {
+    final imageUrl = _selectedQRCodeImageUrl ?? '';
+    if (imageUrl.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -1488,7 +1718,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Image.network(
-                _selectedQRCodeImageUrl!,
+                imageUrl,
                 fit: BoxFit.cover,
                 errorBuilder: (_, _, _) => const Icon(Icons.error, color: Colors.red),
                 loadingBuilder: (_, child, progress) => progress == null ? child : const Center(child: CircularProgressIndicator()),
@@ -1592,6 +1822,19 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         city: _cityController.text.trim(),
         state: _stateController.text.trim(),
         pinCode: _pinCodeController.text.trim(),
+      );
+
+      _transportation = Transportation(
+        documentPending: _transportDocumentPendingController.text.trim(),
+        dlrMail: _transportDlrMailController.text.trim(),
+        pickupDate: _transportPickupDateTime == null
+            ? ''
+            : '${_transportPickupDateTime!.day.toString().padLeft(2, '0')}-${_transportPickupDateTime!.month.toString().padLeft(2, '0')}-${_transportPickupDateTime!.year}',
+        pickupTime: _transportPickupDateTime == null
+            ? ''
+            : '${_transportPickupDateTime!.hour.toString().padLeft(2, '0')}:${_transportPickupDateTime!.minute.toString().padLeft(2, '0')}',
+        pickupLocation: _transportPickupLocationController.text.trim(),
+        startingKm: _transportStartingKmController.text.trim(),
       );
 
       final customer = Customer(
