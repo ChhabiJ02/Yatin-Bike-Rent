@@ -1,8 +1,15 @@
 import 'dart:async';
-
+import 'dart:typed_data';
+import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:image/image.dart' as img;
+import 'package:image_cropper/image_cropper.dart';
 import '../models/customer_documents.dart';
 import '../models/customer.dart';
 import '../models/qr_code.dart';
@@ -12,6 +19,7 @@ import '../models/transportation_model.dart';
 import '../theme/app_theme.dart';
 import '../widgets/form_image_picker.dart';
 import '../services/challan_service.dart';
+import '../services/document_scan_validator.dart';
 import '../services/qr_payment_service.dart';
 import '../services/rental_service.dart';
 import '../admin/customer_bookings_screen.dart';
@@ -34,9 +42,13 @@ class _FieldFocus {
 
 class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _customersCollection = FirebaseFirestore.instance.collection('customers');
+  final _customersCollection = FirebaseFirestore.instance.collection(
+    'customers',
+  );
   final _vehiclesCollection = FirebaseFirestore.instance.collection('vehicles');
-  final _paymentSettingsCollection = FirebaseFirestore.instance.collection('paymentSettings');
+  final _paymentSettingsCollection = FirebaseFirestore.instance.collection(
+    'paymentSettings',
+  );
 
   // Controllers
   final _custCodeController = TextEditingController();
@@ -60,6 +72,8 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   final _rateController = TextEditingController();
   final _billAmountController = TextEditingController();
   final _depositController = TextEditingController();
+  final _referenceIdController = TextEditingController();
+  final _paidAmountController = TextEditingController();
   final _pickupLocationController = TextEditingController();
   final _returnLocationController = TextEditingController();
   final _customerCameFromController = TextEditingController();
@@ -81,7 +95,8 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   final _transportStartingKmController = TextEditingController();
 
   // Customer Mobile Verification Flow States
-  int _customerVerificationStage = 0; // 0: Mobile Input, 1: Choice, 2: Scanner, 3: Full Form
+  int _customerVerificationStage =
+      0; // 0: Mobile Input, 1: Choice, 2: Scanner, 3: Full Form
   bool _isCheckingCustomer = false;
   DocumentSnapshot<Map<String, dynamic>>? _returningCustomer;
   String _lastSearchedPhone = '';
@@ -90,8 +105,11 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   List<DocumentSnapshot<Map<String, dynamic>>> _customerNameMatches = [];
   bool _isSearchingCustomerName = false;
   String? _customerNameSearchError;
-  bool _isScanningFront = false;
-  
+  CameraController? _cameraController;
+  bool _isCapturingId = false;
+  String _scanDocument = 'Aadhaar';
+  int _scanSide = 0;
+
   // Wizard Step State
   int _currentStep = 0;
   final int _totalSteps = 3;
@@ -142,7 +160,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   final Map<TextEditingController, _FieldFocus> _focusNodes = {};
 
   bool _isEditMode = false;
-  bool _isSaving = false; 
+  bool _isSaving = false;
   bool _isDeleting = false;
 
   String _formatDateTime(DateTime dt) {
@@ -159,7 +177,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     final double holderCharge = _hasMobileHolder ? _mobileHolderCharge : 0;
     final double total = baseTotal + helmetCharge + holderCharge;
 
-    _billAmountController.text = total % 1 == 0 ? total.toInt().toString() : total.toStringAsFixed(2);
+    _billAmountController.text = total % 1 == 0
+        ? total.toInt().toString()
+        : total.toStringAsFixed(2);
   }
 
   // Calculate days & bill amount when Expected Return Date/Time changes
@@ -270,15 +290,19 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     }
   }
 
-  void _populateVehicleEntryFields(DocumentSnapshot<Map<String, dynamic>> vehicleDoc) {
+  void _populateVehicleEntryFields(
+    DocumentSnapshot<Map<String, dynamic>> vehicleDoc,
+  ) {
     final data = vehicleDoc.data();
     if (data == null) return;
 
-    _vehicleEntryNameController.text = data['name'] ?? data['vehicleName'] ?? '';
+    _vehicleEntryNameController.text =
+        data['name'] ?? data['vehicleName'] ?? '';
     _rateController.text = data['dailyRate']?.toString() ?? '';
 
     if (_vehicleNumberController.text.isEmpty) {
-      _vehicleNumberController.text = data['number'] ?? _vehicleEntryNoController.text;
+      _vehicleNumberController.text =
+          data['number'] ?? _vehicleEntryNoController.text;
     }
     if (_vehicleController.text.isEmpty) {
       _vehicleController.text = _vehicleEntryNameController.text;
@@ -294,7 +318,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     if (_isEditMode) return;
 
     try {
-      final code = await ChallanService.generateCustomerCodeForFinancialYear(fyear);
+      final code = await ChallanService.generateCustomerCodeForFinancialYear(
+        fyear,
+      );
       if (!mounted) return;
       _custCodeController.text = code;
       setState(() {});
@@ -307,7 +333,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     if (_isEditMode) return;
 
     try {
-      final code = await ChallanService.generateCustomerCodeWithTransaction(fyear);
+      final code = await ChallanService.generateCustomerCodeWithTransaction(
+        fyear,
+      );
       if (!mounted) return;
       _custCodeController.text = code;
       setState(() {});
@@ -376,7 +404,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           _isCheckingCustomer = false;
         });
         await Future<void>.delayed(const Duration(milliseconds: 1200));
-        if (mounted && requestId == _searchRequestId && _returningCustomer == match) {
+        if (mounted &&
+            requestId == _searchRequestId &&
+            _returningCustomer == match) {
           setState(() => _customerVerificationStage = 3);
         }
       } else {
@@ -413,11 +443,16 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   Future<void> _searchCustomersByName(String query) async {
     try {
       final result = await _customersCollection.get();
-      if (!mounted || query != _customerNameSearchController.text.trim().toLowerCase()) return;
+      if (!mounted ||
+          query != _customerNameSearchController.text.trim().toLowerCase())
+        return;
 
       final matches = result.docs.where((doc) {
         final data = doc.data();
-        final name = (data['partyName'] ?? data['name'] ?? data['displayName'] ?? '').toString().toLowerCase();
+        final name =
+            (data['partyName'] ?? data['name'] ?? data['displayName'] ?? '')
+                .toString()
+                .toLowerCase();
         return name.contains(query);
       }).toList();
 
@@ -432,13 +467,16 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       if (mounted) {
         setState(() {
           _isSearchingCustomerName = false;
-          _customerNameSearchError = 'Unable to search customers. Please enter phone number.';
+          _customerNameSearchError =
+              'Unable to search customers. Please enter phone number.';
         });
       }
     }
   }
 
-  Future<void> _selectCustomerName(DocumentSnapshot<Map<String, dynamic>> customer) async {
+  Future<void> _selectCustomerName(
+    DocumentSnapshot<Map<String, dynamic>> customer,
+  ) async {
     await _loadExistingData(customer: customer);
     _customerNameSearchController.clear();
     setState(() {
@@ -447,6 +485,252 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       _returningCustomer = customer;
       _customerVerificationStage = 3;
     });
+  }
+
+  Future<void> _startIdScanner() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) throw Exception('No camera found');
+      final controller = CameraController(
+        cameras.first,
+        ResolutionPreset.high,
+        enableAudio: false,
+      );
+      await controller.initialize();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      await _cameraController?.dispose();
+      setState(() => _cameraController = controller);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Unable to open camera: $e')));
+      }
+    }
+  }
+
+  Future<void> _captureIdCard() async {
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized || _isCapturingId)
+      return;
+    setState(() => _isCapturingId = true);
+    try {
+      final image = await controller.takePicture();
+      await controller.dispose();
+      if (identical(_cameraController, controller) && mounted) {
+        setState(() => _cameraController = null);
+      }
+
+      final croppedImage = await _cropDocument(image.path);
+      if (croppedImage == null) return;
+
+      final text = await _readIdText(croppedImage.path);
+      final validationMessage = _validateScannedDocument(text);
+      if (validationMessage != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(validationMessage),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      final code = _custCodeController.text == 'Generating...'
+          ? 'temp'
+          : _custCodeController.text;
+      final fileName =
+          '${_scanDocument.toLowerCase()}_${_scanSide == 0 ? 'front' : 'back'}.jpg';
+      final ref = FirebaseStorage.instance.ref().child(
+        'documents/$code/identity/$fileName',
+      );
+      final imageBytes = await croppedImage.readAsBytes();
+      final snapshot = await ref.putData(imageBytes);
+      final url = await snapshot.ref.getDownloadURL();
+      String? faceUrl;
+      if (_scanDocument == 'Aadhaar' && _scanSide == 0) {
+        final faceBytes = await _cropFaceFromImage(croppedImage.path);
+        if (faceBytes == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Face not detected. Please scan Aadhaar front again.',
+                ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+        final faceRef = FirebaseStorage.instance.ref().child(
+          'documents/$code/customer/aadhaar_face.jpg',
+        );
+        final faceSnapshot = await faceRef.putData(faceBytes);
+        faceUrl = await faceSnapshot.ref.getDownloadURL();
+      }
+      final documents = _customerDocuments ?? CustomerDocuments();
+      setState(() {
+        _customerDocuments = _scanDocument == 'Aadhaar'
+            ? (_scanSide == 0
+                  ? documents.copyWith(idFront: url, customerPhoto: faceUrl)
+                  : documents.copyWith(idBack: url))
+            : (_scanSide == 0
+                  ? documents.copyWith(licenseFront: url)
+                  : documents.copyWith(licenseBack: url));
+        _applyRecognizedIdText(text);
+        if (_scanDocument == 'Aadhaar') {
+          _scanDocument = 'License';
+          _scanSide = 0;
+        } else {
+          _customerVerificationStage = 3;
+        }
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _scanDocument == 'License'
+                  ? 'Aadhaar front scanned successfully. Now scan the driving license front.'
+                  : 'Driving license front scanned successfully.',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+      if (_customerVerificationStage == 3) {
+        await _cameraController?.dispose();
+        if (mounted) setState(() => _cameraController = null);
+      }
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Scan failed: $e')));
+    } finally {
+      if (mounted) setState(() => _isCapturingId = false);
+      if (mounted &&
+          _customerVerificationStage == 2 &&
+          _cameraController == null) {
+        await _startIdScanner();
+      }
+    }
+  }
+
+  Future<CroppedFile?> _cropDocument(String path) {
+    return ImageCropper().cropImage(
+      sourcePath: path,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Crop document',
+          toolbarColor: Colors.black,
+          toolbarWidgetColor: Colors.white,
+          lockAspectRatio: false,
+        ),
+        IOSUiSettings(title: 'Crop document'),
+        WebUiSettings(context: context),
+      ],
+    );
+  }
+
+  Future<Uint8List?> _cropFaceFromImage(String path) async {
+    if (kIsWeb) return null;
+
+    final detector = FaceDetector(
+      options: FaceDetectorOptions(
+        performanceMode: FaceDetectorMode.accurate,
+        enableTracking: false,
+      ),
+    );
+    try {
+      final faces = await detector.processImage(InputImage.fromFilePath(path));
+      if (faces.isEmpty) return null;
+
+      final source = img.decodeImage(await XFile(path).readAsBytes());
+      if (source == null) return null;
+
+      final face = faces.first.boundingBox;
+      final horizontalMargin = face.width * 0.75;
+      final topMargin = face.height * 0.65;
+      final bottomMargin = face.height * 0.95;
+      final left = (face.left - horizontalMargin).floor().clamp(
+        0,
+        source.width - 1,
+      );
+      final top = (face.top - topMargin).floor().clamp(0, source.height - 1);
+      final right = (face.right + horizontalMargin).ceil().clamp(
+        left + 1,
+        source.width,
+      );
+      final bottom = (face.bottom + bottomMargin).ceil().clamp(
+        top + 1,
+        source.height,
+      );
+      final cropped = img.copyCrop(
+        source,
+        x: left,
+        y: top,
+        width: right - left,
+        height: bottom - top,
+      );
+      return Uint8List.fromList(img.encodeJpg(cropped, quality: 92));
+    } finally {
+      try {
+        await detector.close();
+      } on MissingPluginException {}
+    }
+  }
+
+  Future<String> _readIdText(String path) async {
+    if (kIsWeb) return '';
+    try {
+      final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      final result = await recognizer.processImage(
+        InputImage.fromFilePath(path),
+      );
+      await recognizer.close();
+      return result.text;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  String? _validateScannedDocument(String text) {
+    if (_scanSide == 0 && _scanDocument == 'Aadhaar') {
+      if (!isAadhaarFrontText(text)) {
+        return 'Wrong document. Please scan the front of the Aadhaar card.';
+      }
+    }
+    if (_scanSide == 0 && _scanDocument == 'License') {
+      if (!isDrivingLicenseFrontText(text)) {
+        return 'Wrong document. Please scan the front of the driving license.';
+      }
+    }
+    return null;
+  }
+
+  void _applyRecognizedIdText(String text) {
+    final compact = text.replaceAll(RegExp(r'\s+'), ' ');
+    final aadhaar = RegExp(
+      r'\b\d{4}\s?\d{4}\s?\d{4}\b',
+    ).firstMatch(compact)?.group(0);
+    final phone = RegExp(r'\b[6-9]\d{9}\b').firstMatch(compact)?.group(0);
+    final license =
+        drivingLicenseNumberPattern.firstMatch(compact)?.group(0) ??
+        extractDrivingLicenseNumber(text);
+    if (aadhaar != null) _aadharController.text = aadhaar.replaceAll(' ', '');
+    if (phone != null && _phoneController.text.length != 10)
+      _phoneController.text = phone;
+    if (license != null)
+      _licenseController.text = license.replaceAll(' ', '').toUpperCase();
+    final name = extractDrivingLicenseName(text);
+    if (name != null && _partyNameController.text.isEmpty) {
+      _partyNameController.text = name;
+    }
   }
 
   @override
@@ -485,7 +769,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
     setState(() {
       _paymentMethods = methods;
-      final selectedMethod = methods.where((method) => method.name == _selectedPaymentMode).firstOrNull;
+      final selectedMethod = methods
+          .where((method) => method.name == _selectedPaymentMode)
+          .firstOrNull;
       if (selectedMethod == null && methods.isNotEmpty) {
         _selectedPaymentMode = methods.first.name;
       }
@@ -499,7 +785,11 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     try {
       final parts = dateStr.split('-');
       if (parts.length != 3) return null;
-      return DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+      return DateTime(
+        int.parse(parts[2]),
+        int.parse(parts[1]),
+        int.parse(parts[0]),
+      );
     } catch (e) {
       debugPrint("Error parsing date: $dateStr, $e");
       return null;
@@ -518,9 +808,12 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     }
   }
 
-  Future<void> _loadExistingData({DocumentSnapshot<Map<String, dynamic>>? customer}) async {
+  Future<void> _loadExistingData({
+    DocumentSnapshot<Map<String, dynamic>>? customer,
+  }) async {
     if (customer == null && widget.custCode == null) return;
-    final doc = customer ?? await _customersCollection.doc(widget.custCode).get();
+    final doc =
+        customer ?? await _customersCollection.doc(widget.custCode).get();
     if (doc.exists && mounted) {
       final data = doc.data()!;
       final customer = Customer.fromFirestore(doc);
@@ -535,7 +828,12 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       _daysController.text = customer.days;
       _rateController.text = customer.rate;
       _billAmountController.text = customer.billAmount;
-      _depositController.text = data['deposit']?.toString() ?? data['depositAmount']?.toString() ?? '';
+      _depositController.text =
+          data['deposit']?.toString() ??
+          data['depositAmount']?.toString() ??
+          '';
+      _referenceIdController.text = data['referenceId']?.toString() ?? '';
+      _paidAmountController.text = data['paidAmount']?.toString() ?? '';
       _selectedPaymentMode = data['paymentMode'] ?? 'Cash';
       _hasExtraHelmet = data['hasExtraHelmet'] ?? false;
       _hasMobileHolder = data['hasMobileHolder'] ?? false;
@@ -546,8 +844,10 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
       if (data['vehicleEntry'] is Map) {
         final ve = Map<String, dynamic>.from(data['vehicleEntry'] as Map);
-        _vehicleEntryNoController.text = (ve['no'] ?? ve['number'] ?? '').toString();
-        _vehicleEntryNameController.text = (ve['name'] ?? ve['vehicleName'] ?? '').toString();
+        _vehicleEntryNoController.text = (ve['no'] ?? ve['number'] ?? '')
+            .toString();
+        _vehicleEntryNameController.text =
+            (ve['name'] ?? ve['vehicleName'] ?? '').toString();
       }
 
       if (data['customerDocuments'] != null) {
@@ -566,8 +866,10 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         if (_vehicleEntryNameController.text.isEmpty) {
           _vehicleEntryNameController.text = _vehicleHandover!.vehicleName;
         }
-        _pickupLocationController.text = _vehicleHandover!.vehiclePickupLocation;
-        _returnLocationController.text = _vehicleHandover!.vehicleReturnLocation;
+        _pickupLocationController.text =
+            _vehicleHandover!.vehiclePickupLocation;
+        _returnLocationController.text =
+            _vehicleHandover!.vehicleReturnLocation;
         if (_vehicleHandover!.vehicleGivenDate.isNotEmpty) {
           _vehicleGivenDate = _parseDate(_vehicleHandover!.vehicleGivenDate);
         }
@@ -582,7 +884,8 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         }
       }
       if (_vehicleEntryNoController.text.isEmpty) {
-        _vehicleEntryNoController.text = (data['vehicleNumber'] ?? data['vehicleNo'] ?? '').toString();
+        _vehicleEntryNoController.text =
+            (data['vehicleNumber'] ?? data['vehicleNo'] ?? '').toString();
       }
       if (_vehicleController.text.isEmpty) {
         _vehicleController.text = (data['vehicleName'] ?? '').toString();
@@ -611,9 +914,11 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         _transportation = Transportation.fromMap(
           Map<String, dynamic>.from(data['transportation']),
         );
-        _transportDocumentPendingController.text = _transportation!.documentPending;
+        _transportDocumentPendingController.text =
+            _transportation!.documentPending;
         _transportDlrMailController.text = _transportation!.dlrMail;
-        _transportPickupLocationController.text = _transportation!.pickupLocation;
+        _transportPickupLocationController.text =
+            _transportation!.pickupLocation;
         _transportStartingKmController.text = _transportation!.startingKm;
         final pickupDate = _parseDate(_transportation!.pickupDate);
         final pickupTime = _parseTime(_transportation!.pickupTime);
@@ -629,7 +934,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       }
       _selectedQRCodeId = data['qrCodeId'];
       if ((_selectedQRCodeId ?? '').isNotEmpty) {
-        final qrDoc = await _paymentSettingsCollection.doc(_selectedQRCodeId).get();
+        final qrDoc = await _paymentSettingsCollection
+            .doc(_selectedQRCodeId)
+            .get();
         if (qrDoc.exists) {
           final qrData = qrDoc.data() as Map<String, dynamic>;
           _selectedQRCodeImageUrl = qrData['imageUrl'];
@@ -678,23 +985,22 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       }
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => const CustomerBookingsScreen(),
-        ),
+        MaterialPageRoute(builder: (_) => const CustomerBookingsScreen()),
         (route) => false,
       );
     } catch (e) {
       if (mounted) {
         setState(() => _isDeleting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Unable to delete challan: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Unable to delete challan: $e')));
       }
     }
   }
 
   @override
   void dispose() {
+    _cameraController?.dispose();
     _customerNameSearchDebounce?.cancel();
     _daysController.removeListener(_calculateBillAmount);
     _rateController.removeListener(_calculateBillAmount);
@@ -718,6 +1024,8 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     _rateController.dispose();
     _billAmountController.dispose();
     _depositController.dispose();
+    _referenceIdController.dispose();
+    _paidAmountController.dispose();
     _pickupLocationController.dispose();
     _returnLocationController.dispose();
     _customerCameFromController.dispose();
@@ -743,11 +1051,31 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final showStepIndicator = _isEditMode || _customerVerificationStage == 3;
+    final showBottomNavigation = _isEditMode || _customerVerificationStage == 3;
+    final isScanner = _customerVerificationStage == 2;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditMode ? 'Edit Challan' : 'New Challan', style: const TextStyle(color: Colors.white)),
-        backgroundColor: AppColors.ember,
-        foregroundColor: Colors.white, 
+        title: Text(
+          isScanner
+              ? 'Scan ${_scanDocument.toLowerCase()} front'
+              : (_isEditMode ? 'Edit Booking' : 'New Booking'),
+          style: TextStyle(
+            color: isScanner ? Colors.white : AppColors.ink,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        backgroundColor: isScanner ? AppColors.ember : Colors.white,
+        foregroundColor: isScanner ? Colors.white : AppColors.ink,
+        centerTitle: true,
+        leading: isScanner
+            ? null
+            : IconButton(
+                tooltip: 'Back',
+                onPressed: () => Navigator.maybePop(context),
+                icon: const Icon(Icons.arrow_back),
+              ),
         actions: [
           if (_isEditMode)
             IconButton(
@@ -764,13 +1092,21 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
                     )
                   : const Icon(Icons.delete_outline),
             ),
+          if (!_isEditMode && !isScanner)
+            TextButton(
+              onPressed: () => Navigator.maybePop(context),
+              child: const Text('Cancel'),
+            ),
         ],
-        bottom: (!_isEditMode && _customerVerificationStage == 0)
+        bottom: !showStepIndicator
             ? null
             : PreferredSize(
                 preferredSize: const Size.fromHeight(80.0),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12.0),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8.0,
+                    vertical: 12.0,
+                  ),
                   child: _buildStepIndicator(),
                 ),
               ),
@@ -786,46 +1122,73 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
+      bottomNavigationBar: showBottomNavigation
+          ? _buildBottomNavigationBar()
+          : null,
     );
   }
 
   Widget _buildStepIndicator() {
     return Row(
-      children: [
-        Expanded(
-          child: _buildStepIndicatorItem(icon: Icons.person, label: 'Customer', step: 0),
-        ),
-        Expanded(
-          child: _buildStepIndicatorItem(icon: Icons.directions_car, label: 'Booking Details', step: 1),
-        ),
-        Expanded(
-          child: _buildStepIndicatorItem(icon: Icons.payment, label: 'Payment', step: 2),
-        ),
-      ],
+      children: List.generate(_totalSteps, (step) {
+        return Expanded(
+          child: Row(
+            children: [
+              Expanded(child: _buildStepIndicatorItem(step: step)),
+              if (step < _totalSteps - 1)
+                Expanded(
+                  child: Container(height: 1, color: const Color(0xFFD0D0D0)),
+                ),
+            ],
+          ),
+        );
+      }),
     );
   }
 
-  Widget _buildStepIndicatorItem({required IconData icon, required String label, required int step}) {
+  Widget _buildStepIndicatorItem({required int step}) {
     final bool isActive = _currentStep == step;
     final bool isCompleted = _currentStep > step;
-    final color = isCompleted || isActive ? Colors.white : Colors.white.withValues(alpha: 0.5);
+    const labels = ['Customer Details', 'Booking Details', 'Payment'];
+    final color = isCompleted || isActive ? Colors.black : AppColors.muted;
     final fontWeight = isActive ? FontWeight.bold : FontWeight.normal;
 
     return InkWell(
-      onTap: step <= _currentStep ? () => setState(() => _currentStep = step) : null,
+      onTap: step <= _currentStep
+          ? () => setState(() => _currentStep = step)
+          : null,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color),
+            Container(
+              width: 28,
+              height: 28,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: isActive || isCompleted ? Colors.black : Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.black26),
+              ),
+              child: Text(
+                '${step + 1}',
+                style: TextStyle(
+                  color: isActive || isCompleted ? Colors.white : Colors.black,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
             const SizedBox(height: 4),
             Text(
-              label,
+              labels[step],
               textAlign: TextAlign.center,
-              style: TextStyle(color: color, fontWeight: fontWeight, fontSize: 12),
+              style: TextStyle(
+                color: color,
+                fontWeight: fontWeight,
+                fontSize: 12,
+              ),
             ),
           ],
         ),
@@ -864,16 +1227,40 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Row(
+            children: [
+              Expanded(
+                child: _buildReadOnlyField(
+                  'Customer Code',
+                  _custCodeController,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: _buildReadOnlyField('Date', _dateController)),
+            ],
+          ),
           _buildCustomerSectionTitle('Customer Details'),
           LayoutBuilder(
             builder: (context, constraints) {
               final details = Column(
                 children: [
-                  _buildCustomerInfoCard(Icons.person_outline, 'Name', _partyNameController),
-                  _buildCustomerInfoCard(Icons.phone_outlined, 'Mobile Number', _phoneController,
-                      keyboardType: TextInputType.phone),
-                  _buildCustomerInfoCard(Icons.chat_outlined, 'WhatsApp Number', _alternatePhoneController,
-                      keyboardType: TextInputType.phone),
+                  _buildCustomerInfoCard(
+                    Icons.person_outline,
+                    'Name',
+                    _partyNameController,
+                  ),
+                  _buildCustomerInfoCard(
+                    Icons.phone_outlined,
+                    'Mobile Number',
+                    _phoneController,
+                    keyboardType: TextInputType.phone,
+                  ),
+                  _buildCustomerInfoCard(
+                    Icons.chat_outlined,
+                    'WhatsApp Number',
+                    _alternatePhoneController,
+                    keyboardType: TextInputType.phone,
+                  ),
                 ],
               );
               final photo = _buildCustomerPhotoCard();
@@ -883,7 +1270,10 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
                 children: [
                   Expanded(child: details),
                   const SizedBox(width: 10),
-                  SizedBox(width: constraints.maxWidth < 430 ? 108 : 132, child: photo),
+                  SizedBox(
+                    width: constraints.maxWidth < 430 ? 108 : 132,
+                    child: photo,
+                  ),
                 ],
               );
             },
@@ -900,7 +1290,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
             ],
           ),
           _buildTextField(_licenseController, 'Driver License Number'),
-          _buildTextField(_customerCityController, 'City'),
           _buildCustomerSectionTitle('Identity Proof (Select 4 Photos)'),
           _buildDocumentSection(),
         ],
@@ -913,7 +1302,11 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       padding: const EdgeInsets.only(bottom: 10),
       child: Text(
         title,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.ink),
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
+          color: AppColors.ink,
+        ),
       ),
     );
   }
@@ -958,7 +1351,10 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
                     contentPadding: EdgeInsets.zero,
                     isDense: true,
                   ),
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ),
@@ -982,7 +1378,8 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         folder: 'documents/${_custCodeController.text}/customer',
         onImageSelected: (url) {
           setState(() {
-            _customerDocuments = (_customerDocuments ?? CustomerDocuments()).copyWith(customerPhoto: url);
+            _customerDocuments = (_customerDocuments ?? CustomerDocuments())
+                .copyWith(customerPhoto: url);
           });
         },
       ),
@@ -997,7 +1394,11 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         children: [
           const Text(
             "Who's renting?",
-            style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.black),
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+              color: Colors.black,
+            ),
           ),
           const SizedBox(height: 8),
           const Text(
@@ -1015,10 +1416,17 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
             ],
             decoration: InputDecoration(
               prefixIcon: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
                 child: const Text(
                   '+91  |',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey),
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                  ),
                 ),
               ),
               hintText: 'Enter mobile no',
@@ -1026,15 +1434,35 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               suffixIcon: _isCheckingCustomer
                   ? const Padding(
                       padding: EdgeInsets.all(12),
-                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
                     )
                   : (_returningCustomer != null
-                      ? const Icon(Icons.check_circle, color: Color(0xFF00C853), size: 24)
-                      : null),
-              contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.shade300)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.shade300)),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.black, width: 1.5)),
+                        ? const Icon(
+                            Icons.check_circle,
+                            color: Color(0xFF00C853),
+                            size: 24,
+                          )
+                        : null),
+              contentPadding: const EdgeInsets.symmetric(
+                vertical: 18,
+                horizontal: 16,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: Colors.black, width: 1.5),
+              ),
             ),
           ),
           const SizedBox(height: 18),
@@ -1049,10 +1477,16 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               suffixIcon: _isSearchingCustomerName
                   ? const Padding(
                       padding: EdgeInsets.all(12),
-                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
                     )
                   : null,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
             ),
           ),
           if (_customerNameMatches.isNotEmpty) ...[
@@ -1071,11 +1505,19 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
                 itemBuilder: (context, index) {
                   final customer = _customerNameMatches[index];
                   final data = customer.data() ?? <String, dynamic>{};
-                  final name = (data['partyName'] ?? data['name'] ?? data['displayName'] ?? '').toString();
+                  final name =
+                      (data['partyName'] ??
+                              data['name'] ??
+                              data['displayName'] ??
+                              '')
+                          .toString();
                   return InkWell(
                     onTap: () => _selectCustomerName(customer),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
                       child: Row(
                         children: [
                           const Icon(Icons.person_outline),
@@ -1117,7 +1559,13 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFF00C853).withOpacity(0.4)),
-        boxShadow: [BoxShadow(color: Colors.grey.shade100, blurRadius: 8, spreadRadius: 2)],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.shade100,
+            blurRadius: 8,
+            spreadRadius: 2,
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -1125,20 +1573,39 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
             radius: 24,
             backgroundColor: Colors.grey.shade200,
             backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
-            child: photo.isEmpty ? const Icon(Icons.person, color: Colors.grey) : null,
+            child: photo.isEmpty
+                ? const Icon(Icons.person, color: Colors.grey)
+                : null,
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Row(
                   children: const [
-                    Icon(Icons.check_circle, color: Color(0xFF00C853), size: 16),
+                    Icon(
+                      Icons.check_circle,
+                      color: Color(0xFF00C853),
+                      size: 16,
+                    ),
                     SizedBox(width: 4),
-                    Text('Returning customer', style: TextStyle(color: Color(0xFF00C853), fontWeight: FontWeight.w600, fontSize: 13)),
+                    Text(
+                      'Returning customer',
+                      style: TextStyle(
+                        color: Color(0xFF00C853),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -1160,10 +1627,14 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
             title: 'Scan ID card',
             subtitle: 'Auto-fills name, ID number & address',
             isDark: true,
-            onTap: () => setState(() {
-              _isScanningFront = true;
-              _customerVerificationStage = 2;
-            }),
+            onTap: () {
+              setState(() {
+                _customerVerificationStage = 2;
+                _scanDocument = 'Aadhaar';
+                _scanSide = 0;
+              });
+              _startIdScanner();
+            },
           ),
           const SizedBox(height: 16),
           Row(
@@ -1218,13 +1689,31 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: isDark ? Colors.white : Colors.black)),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 17,
+                      color: isDark ? Colors.white : Colors.black,
+                    ),
+                  ),
                   const SizedBox(height: 4),
-                  Text(subtitle, style: TextStyle(fontSize: 13, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark
+                          ? Colors.grey.shade400
+                          : Colors.grey.shade600,
+                    ),
+                  ),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, color: isDark ? Colors.white : Colors.black),
+            Icon(
+              Icons.chevron_right,
+              color: isDark ? Colors.white : Colors.black,
+            ),
           ],
         ),
       ),
@@ -1232,21 +1721,95 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   }
 
   Widget _buildIdScannerStep() {
-    return Center(
+    final camera = _cameraController;
+    final title = 'Scan ${_scanDocument.toLowerCase()} front';
+    return Container(
+      color: Colors.black,
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.camera_alt, size: 64, color: Colors.grey),
-          const SizedBox(height: 16),
-          Text(_isScanningFront ? 'Scanning ID Front...' : 'Scanning ID Back...'),
           const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _customerVerificationStage = 3;
-              });
-            },
-            child: const Text('Complete Scan & Fill Form'),
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Place card flat and keep all corners in frame',
+            style: TextStyle(color: Colors.grey.shade400, fontSize: 15),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: Center(
+              child: camera?.value.isInitialized == true
+                  ? LayoutBuilder(
+                      builder: (context, constraints) {
+                        final frameWidth = (constraints.maxWidth - 32).clamp(
+                          0.0,
+                          620.0,
+                        );
+                        final frameHeight = frameWidth / 1.586;
+                        return SizedBox(
+                          width: frameWidth,
+                          height: frameHeight,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                FittedBox(
+                                  fit: BoxFit.cover,
+                                  child: SizedBox(
+                                    width:
+                                        camera!.value.previewSize?.height ??
+                                        frameWidth,
+                                    height:
+                                        camera.value.previewSize?.width ??
+                                        frameHeight,
+                                    child: CameraPreview(camera),
+                                  ),
+                                ),
+                                DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: Colors.white70,
+                                      width: 2,
+                                    ),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    )
+                  : const CircularProgressIndicator(color: Colors.white),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 28),
+            child: GestureDetector(
+              onTap: _isCapturingId ? null : _captureIdCard,
+              child: Container(
+                width: 78,
+                height: 78,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.grey.shade500, width: 5),
+                ),
+                child: _isCapturingId
+                    ? const Padding(
+                        padding: EdgeInsets.all(22),
+                        child: CircularProgressIndicator(),
+                      )
+                    : null,
+              ),
+            ),
           ),
         ],
       ),
@@ -1255,18 +1818,72 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
   Widget _buildBookingDetailsStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildSectionHeader('Booking Details'),
+          _buildSectionHeader('From City'),
+          _buildTextField(_cityController, 'City'),
+          _buildSectionHeader('Select Vehicle'),
           _buildVehicleEntrySection(),
-          const SizedBox(height: 12),
-          _buildVehicleHandoverSection(),
-          const SizedBox(height: 12),
+          _buildSectionHeader('Date & Time'),
+          Row(
+            children: [
+              Expanded(
+                child: _buildDateTimePicker(
+                  'Pickup Date & Time',
+                  _vehicleGivenDate,
+                  _vehicleGivenTime,
+                  (date, time) {
+                    setState(() {
+                      _vehicleGivenDate = date;
+                      _vehicleGivenTime = time;
+                    });
+                  },
+                  icon: Icons.calendar_month_outlined,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildDateTimePicker(
+                  'Return Date & Time',
+                  _vehicleReturnDate,
+                  _vehicleReturnTime,
+                  (date, time) {
+                    setState(() {
+                      _vehicleReturnDate = date;
+                      _vehicleReturnTime = time;
+                      _calculateDaysFromReturnDate();
+                    });
+                  },
+                  icon: Icons.calendar_month_outlined,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: _buildTextField(
+                  _pickupLocationController,
+                  'Pick up location',
+                  icon: Icons.location_on_outlined,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildTextField(
+                  _transportStartingKmController,
+                  'Start kilometer',
+                  keyboardType: TextInputType.number,
+                  icon: Icons.speed_outlined,
+                ),
+              ),
+            ],
+          ),
+          _buildSectionHeader('Helmet & Add-ons'),
           _buildBookingSection(),
-          const SizedBox(height: 12),
-          _buildTransportationPickupSection(),
         ],
       ),
     );
@@ -1277,16 +1894,12 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildSectionHeader('Pickup Details'),
-        _buildTextField(_transportDocumentPendingController, 'Document Pending'),
-        _buildTextField(
-          _transportDlrMailController,
-          'DLR Mail',
-          keyboardType: TextInputType.emailAddress,
-        ),
         _buildDateTimePicker(
           'Pickup Date and Time',
           _transportPickupDateTime,
-          _transportPickupDateTime == null ? null : TimeOfDay.fromDateTime(_transportPickupDateTime!),
+          _transportPickupDateTime == null
+              ? null
+              : TimeOfDay.fromDateTime(_transportPickupDateTime!),
           (date, time) {
             if (date == null) return;
             setState(() {
@@ -1316,16 +1929,14 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildSectionHeader('Entry Info'),
-          _buildReadOnlyField('Customer Code', _custCodeController),
-          _buildReadOnlyField('Date', _dateController),
-          _buildReadOnlyField('Financial Year', _fyearController),
-          
-          const SizedBox(height: 24),
-          _buildSectionHeader('Deposit & Payment Options'),
-          
-          _buildTextField(_depositController, 'Deposit Amount (₹)', keyboardType: TextInputType.number),
-          
+          _buildSectionHeader('Payment'),
+          _buildTextField(_referenceIdController, 'Reference ID'),
+          _buildTextField(
+            _paidAmountController,
+            'Paid Amount (₹)',
+            keyboardType: TextInputType.number,
+          ),
+          _buildReadOnlyField('Bill Amount', _billAmountController),
           _buildPaymentModeDropdown(),
           if ((_selectedQRCodeImageUrl ?? '').isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -1337,36 +1948,123 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   }
 
   Widget _buildPaymentModeDropdown() {
-    if (_paymentMethods.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.only(bottom: 12),
-        child: Center(child: CircularProgressIndicator()),
+    const methods = ['Cash', 'BOB', 'SBI', 'GPay', 'PNB'];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(bottom: 10),
+          child: Text(
+            'Payment Method',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+        ),
+        Row(
+          children: methods.map((method) {
+            final isSelected =
+                _selectedPaymentMode.toLowerCase() == method.toLowerCase();
+            final configured = _paymentMethods
+                .where(
+                  (item) => item.name.toLowerCase() == method.toLowerCase(),
+                )
+                .firstOrNull;
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(right: method == methods.last ? 0 : 8),
+                child: _buildPaymentMethodCard(method, isSelected, configured),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaymentMethodCard(
+    String method,
+    bool isSelected,
+    QRCodePayment? configured,
+  ) {
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedPaymentMode = method;
+          _selectedQRCodeId = configured?.requiresQr == true
+              ? configured!.id
+              : null;
+          _selectedQRCodeImageUrl = configured?.requiresQr == true
+              ? configured!.imageUrl
+              : null;
+        });
+      },
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        height: 86,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? Colors.black : const Color(0xFFE5E5E5),
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildPaymentLogo(method, configured),
+            const SizedBox(height: 5),
+            Text(
+              method,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentLogo(String method, QRCodePayment? configured) {
+    if ((configured?.imageUrl ?? '').isNotEmpty) {
+      return SizedBox(
+        width: 30,
+        height: 30,
+        child: Image.network(
+          configured!.imageUrl,
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) => _buildFallbackPaymentLogo(method),
+        ),
       );
     }
+    return _buildFallbackPaymentLogo(method);
+  }
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: DropdownButtonFormField<String>(
-        initialValue: _paymentMethods.any((method) => method.name == _selectedPaymentMode)
-            ? _selectedPaymentMode
-            : null,
-        decoration: InputDecoration(
-          labelText: 'Payment Mode',
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-        items: _paymentMethods
-            .map((method) => DropdownMenuItem(value: method.name, child: Text(method.name)))
-            .toList(),
-        onChanged: (value) {
-          if (value == null) return;
-          final method = _paymentMethods.firstWhere((item) => item.name == value);
-          setState(() {
-            _selectedPaymentMode = method.name;
-            _selectedQRCodeId = method.requiresQr ? method.id : null;
-            _selectedQRCodeImageUrl = method.requiresQr ? method.imageUrl : null;
-          });
-        },
+  Widget _buildFallbackPaymentLogo(String method) {
+    final colors = <String, Color>{
+      'Cash': Colors.black,
+      'BOB': const Color(0xFFE85D04),
+      'SBI': const Color(0xFF1769AA),
+      'GPay': const Color(0xFF34A853),
+      'PNB': const Color(0xFF9E1B32),
+    };
+    return Container(
+      width: 30,
+      height: 30,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: (colors[method] ?? Colors.black).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(7),
       ),
+      child: method == 'Cash'
+          ? Icon(Icons.payments_outlined, size: 24, color: colors[method])
+          : Text(
+              method == 'GPay' ? 'G' : method[0],
+              style: TextStyle(
+                color: colors[method] ?? Colors.black,
+                fontSize: 19,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
     );
   }
 
@@ -1377,22 +2075,25 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     TextInputType? keyboardType,
     List<TextInputFormatter>? inputFormatters,
     bool required = false,
+    IconData? icon,
   }) {
     _registerFocusNode(controller, _currentStep);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
-        controller: controller, 
+        controller: controller,
         maxLines: maxLines,
         keyboardType: keyboardType,
         inputFormatters: inputFormatters,
         focusNode: _focusNodes[controller]?.focusNode,
         decoration: InputDecoration(
           labelText: label,
+          prefixIcon: icon == null ? null : Icon(icon),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
         validator: required
-            ? (v) => (v == null || v.trim().isEmpty) ? '$label is required' : null
+            ? (v) =>
+                  (v == null || v.trim().isEmpty) ? '$label is required' : null
             : null,
       ),
     );
@@ -1423,73 +2124,220 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   }
 
   Widget _buildVehicleEntrySection() {
+    final vehicleNumber = _vehicleEntryNoController.text.trim();
+    final fetchedVehicleNumber = _vehicleNumberController.text.trim();
+    final vehicleName = _vehicleEntryNameController.text.trim();
+    final rate = _rateController.text.trim();
+    final hasVehicle = vehicleNumber.isNotEmpty || vehicleName.isNotEmpty;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionHeader('Vehicle Entry'),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: SizedBox(
-            height: 56,
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: _vehicleEntryNoController,
-                    decoration: InputDecoration(
-                      labelText: 'No',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 16,
-                      ),
-                    ),
-                    textInputAction: TextInputAction.search,
-                    onFieldSubmitted: (_) => _searchVehicle(),
-                  ),
+        InkWell(
+          onTap: _showVehicleEntryDialog,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE4E4E4)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x0C000000),
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
                 ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: _isSearchingVehicle ? null : _searchVehicle,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.ember,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+              ],
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: AppColors.ember.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(
+                        Icons.two_wheeler_outlined,
+                        color: AppColors.ember,
+                        size: 28,
                       ),
                     ),
-                    child: _isSearchingVehicle
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            hasVehicle
+                                ? (vehicleName.isEmpty
+                                      ? 'Vehicle'
+                                      : vehicleName)
+                                : 'Select Vehicle',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
                             ),
-                          )
-                        : const Text('Enter'),
-                  ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            fetchedVehicleNumber.isNotEmpty
+                                ? 'Number plate: $fetchedVehicleNumber'
+                                : vehicleNumber.isEmpty
+                                ? 'Tap to add vehicle number'
+                                : vehicleNumber,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: hasVehicle ? Colors.black54 : Colors.grey,
+                            ),
+                          ),
+                          if (rate.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              '₹$rate / day',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.edit_outlined, size: 21),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildTextField(
+                        _daysController,
+                        'Days',
+                        keyboardType: TextInputType.number,
+                        icon: Icons.numbers_outlined,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _buildTextField(
+                        _rateController,
+                        'Rate/Day',
+                        keyboardType: TextInputType.number,
+                        icon: Icons.currency_rupee,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
         ),
-        _buildTextField(_vehicleEntryNameController, 'Vehicle Name'),
       ],
     );
   }
 
+  Future<void> _showVehicleEntryDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          return AlertDialog(
+            title: const Text('Vehicle Details'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _vehicleEntryNoController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'No',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  textInputAction: TextInputAction.search,
+                  onFieldSubmitted: (_) async {
+                    setDialogState(() {});
+                    await _searchVehicle();
+                    if (dialogContext.mounted) setDialogState(() {});
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _vehicleEntryNameController,
+                  decoration: InputDecoration(
+                    labelText: 'Vehicle Name',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                if (_vehicleNumberController.text.trim().isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Number Plate',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(_vehicleNumberController.text.trim()),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton.icon(
+                onPressed: _isSearchingVehicle
+                    ? null
+                    : () async {
+                        setDialogState(() {});
+                        await _searchVehicle();
+                        if (dialogContext.mounted) setDialogState(() {});
+                      },
+                icon: _isSearchingVehicle
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.search),
+                label: const Text('Enter'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  setState(() {});
+                  Navigator.pop(dialogContext);
+                },
+                child: const Text('Done'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
   Widget _buildDocumentSection() {
-    final code = _custCodeController.text.isNotEmpty && _custCodeController.text != 'Generating...'
-        ? _custCodeController.text 
+    final code =
+        _custCodeController.text.isNotEmpty &&
+            _custCodeController.text != 'Generating...'
+        ? _custCodeController.text
         : (widget.custCode ?? 'temp');
 
-    return Column( 
+    return Column(
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1498,12 +2346,15 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               child: FormImagePicker(
                 label: 'Aadhar Card\nFront',
                 compact: true,
+                cropDocument: true,
                 imageUrl: _customerDocuments?.idFront,
                 folder: 'documents/$code/documents',
                 onImageSelected: (url) {
                   setState(() {
                     _customerDocuments =
-                        (_customerDocuments ?? CustomerDocuments()).copyWith(idFront: url);
+                        (_customerDocuments ?? CustomerDocuments()).copyWith(
+                          idFront: url,
+                        );
                   });
                 },
               ),
@@ -1513,12 +2364,15 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               child: FormImagePicker(
                 label: 'Aadhar Card\nBack',
                 compact: true,
+                cropDocument: true,
                 imageUrl: _customerDocuments?.idBack,
                 folder: 'documents/$code/documents',
                 onImageSelected: (url) {
                   setState(() {
                     _customerDocuments =
-                        (_customerDocuments ?? CustomerDocuments()).copyWith(idBack: url);
+                        (_customerDocuments ?? CustomerDocuments()).copyWith(
+                          idBack: url,
+                        );
                   });
                 },
               ),
@@ -1533,12 +2387,15 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               child: FormImagePicker(
                 label: 'Driving License\nFront',
                 compact: true,
-                imageUrl: _customerDocuments?.customerPhoto,
-                folder: 'documents/$code/customer',
+                cropDocument: true,
+                imageUrl: _customerDocuments?.licenseFront,
+                folder: 'documents/$code/identity',
                 onImageSelected: (url) {
                   setState(() {
-                    _customerDocuments = (_customerDocuments ?? CustomerDocuments())
-                        .copyWith(customerPhoto: url);
+                    _customerDocuments =
+                        (_customerDocuments ?? CustomerDocuments()).copyWith(
+                          licenseFront: url,
+                        );
                   });
                 },
               ),
@@ -1548,12 +2405,15 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               child: FormImagePicker(
                 label: 'Driving License\nBack',
                 compact: true,
-                imageUrl: _customerDocuments?.travelTicketPhoto,
-                folder: 'documents/$code/travel',
+                cropDocument: true,
+                imageUrl: _customerDocuments?.licenseBack,
+                folder: 'documents/$code/identity',
                 onImageSelected: (url) {
                   setState(() {
-                    _customerDocuments = (_customerDocuments ?? CustomerDocuments())
-                        .copyWith(travelTicketPhoto: url);
+                    _customerDocuments =
+                        (_customerDocuments ?? CustomerDocuments()).copyWith(
+                          licenseBack: url,
+                        );
                   });
                 },
               ),
@@ -1576,8 +2436,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     String label,
     DateTime? date,
     TimeOfDay? time,
-    Function(DateTime?, TimeOfDay?) onChanged,
-  ) {
+    Function(DateTime?, TimeOfDay?) onChanged, {
+    IconData? icon,
+  }) {
     return InkWell(
       onTap: () async {
         final pickedDate = await showDatePicker(
@@ -1600,6 +2461,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         decoration: InputDecoration(
           labelText: label,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          prefixIcon: icon == null ? null : Icon(icon),
           suffixIcon: const Icon(Icons.calendar_today),
         ),
         child: Text(
@@ -1617,83 +2479,100 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   Widget _buildBookingSection() {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: _buildDateTimePicker(
-            'Expected Return',
-            _vehicleReturnDate,
-            _vehicleReturnTime,
-            (pickedDate, pickedTime) {
-              setState(() {
-                _vehicleReturnDate = pickedDate;
-                _vehicleReturnTime = pickedTime;
-                _calculateDaysFromReturnDate();
-              });
-            },
-          ),
-        ),
+        _buildReadOnlyField('Bill Amount', _billAmountController),
+        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
-              child: _buildTextField(_daysController, 'Days', keyboardType: TextInputType.number),
+              child: _buildAddOnCard(
+                icon: Icons.sports_motorsports_outlined,
+                label: '1 Helmet',
+                selected: !_hasExtraHelmet,
+                onTap: () {
+                  setState(() {
+                    _hasExtraHelmet = false;
+                    _calculateBillAmount();
+                  });
+                },
+              ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
-              child: _buildTextField(_rateController, 'Rate/Day', keyboardType: TextInputType.number),
+              child: _buildAddOnCard(
+                icon: Icons.sports_motorsports_outlined,
+                label: '2 Helmets',
+                charge: '+ ₹50',
+                selected: _hasExtraHelmet,
+                onTap: () {
+                  setState(() {
+                    _hasExtraHelmet = true;
+                    _calculateBillAmount();
+                  });
+                },
+              ),
             ),
           ],
         ),
-        _buildReadOnlyField('Bill Amount', _billAmountController),
-        const SizedBox(height: 16),
-        Material(
-          color: Colors.transparent,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text('Add-ons', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.muted)),
-              ),
-              CheckboxListTile(
-                title: const Text('Free Helmet (Included)'),
-                value: true,
-                onChanged: null,
-                controlAffinity: ListTileControlAffinity.leading,
-                dense: true,
-                activeColor: AppColors.ember,
-              ),
-              CheckboxListTile(
-                title: const Text('Extra Helmet'),
-                subtitle: const Text('+ ₹50.0'),
-                value: _hasExtraHelmet,
-                onChanged: (bool? value) {
-                  setState(() {
-                    _hasExtraHelmet = value ?? false;
-                    _calculateBillAmount();
-                  });
-                },
-                controlAffinity: ListTileControlAffinity.leading,
-                dense: true,
-                activeColor: AppColors.ember,
-              ),
-              CheckboxListTile(
-                title: const Text('Mobile Holder'),
-                subtitle: const Text('+ ₹30.0'),
-                value: _hasMobileHolder,
-                onChanged: (bool? value) {
-                  setState(() {
-                    _hasMobileHolder = value ?? false;
-                    _calculateBillAmount();
-                  });
-                },
-                controlAffinity: ListTileControlAffinity.leading,
-                dense: true,
-                activeColor: AppColors.ember,
-              ),
-            ],
-          ),
+        const SizedBox(height: 10),
+        _buildAddOnCard(
+          icon: Icons.phone_android_outlined,
+          label: 'Mobile Holder',
+          charge: '+ ₹30',
+          selected: _hasMobileHolder,
+          onTap: () {
+            setState(() {
+              _hasMobileHolder = !_hasMobileHolder;
+              _calculateBillAmount();
+            });
+          },
         ),
       ],
+    );
+  }
+
+  Widget _buildAddOnCard({
+    required IconData icon,
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+    String? charge,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(
+            color: selected ? Colors.black : const Color(0xFFE2E2E2),
+            width: selected ? 1.5 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              selected ? Icons.check_circle : Icons.circle_outlined,
+              size: 22,
+              color: selected ? Colors.black : AppColors.ink,
+            ),
+            const SizedBox(width: 8),
+            Icon(icon, size: 25, color: AppColors.ink),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                charge == null ? label : '$label\n$charge',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1720,8 +2599,11 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               child: Image.network(
                 imageUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => const Icon(Icons.error, color: Colors.red),
-                loadingBuilder: (_, child, progress) => progress == null ? child : const Center(child: CircularProgressIndicator()),
+                errorBuilder: (_, _, _) =>
+                    const Icon(Icons.error, color: Colors.red),
+                loadingBuilder: (_, child, progress) => progress == null
+                    ? child
+                    : const Center(child: CircularProgressIndicator()),
               ),
             ),
           ),
@@ -1743,31 +2625,58 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          if (_currentStep > 0)
-            TextButton(
-              onPressed: _previousStep,
-              child: const Text('<- Back', style: TextStyle(color: AppColors.muted)),
-            ),
-          const Spacer(),
-          ElevatedButton(
-            onPressed: _isSaving
-                ? null
-                : (_currentStep == _totalSteps - 1 ? _saveCustomer : _nextStep),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.ember,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: _isSaving
-                ? const CircularProgressIndicator(color: Colors.white)
-                : Text(
-                    _currentStep == _totalSteps - 1 ? (_isEditMode ? 'Update Challan' : 'Save Challan') : 'Next ->',
+          Row(
+            children: [
+              if (_currentStep > 0)
+                TextButton(
+                  onPressed: _previousStep,
+                  child: const Text(
+                    '<- Back',
+                    style: TextStyle(color: AppColors.muted),
                   ),
+                ),
+              const Spacer(),
+              ElevatedButton(
+                onPressed: _isSaving
+                    ? null
+                    : (_currentStep == _totalSteps - 1
+                          ? _saveCustomer
+                          : _nextStep),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.ember,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 40,
+                    vertical: 16,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: _isSaving
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : Text(
+                        _currentStep == _totalSteps - 1
+                            ? (_isEditMode ? 'Update Booking' : 'Save Booking')
+                            : 'Next ->',
+                      ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.lock, size: 13, color: AppColors.muted),
+              SizedBox(width: 5),
+              Text(
+                'Your data is secure and will not be shared.',
+                style: TextStyle(fontSize: 11, color: AppColors.muted),
+              ),
+            ],
           ),
         ],
       ),
@@ -1869,6 +2778,8 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
       customerData['deposit'] = _depositController.text.trim();
       customerData['depositAmount'] = _depositController.text.trim();
+      customerData['referenceId'] = _referenceIdController.text.trim();
+      customerData['paidAmount'] = _paidAmountController.text.trim();
       customerData['paymentMode'] = _selectedPaymentMode;
 
       if (_selectedQRCodeId != null) {
@@ -1881,7 +2792,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         customerData['city'] = _customerCityController.text.trim();
       }
 
-      await _customersCollection.doc(customerCode).set(customerData, SetOptions(merge: true));
+      await _customersCollection
+          .doc(customerCode)
+          .set(customerData, SetOptions(merge: true));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Challan saved successfully')),

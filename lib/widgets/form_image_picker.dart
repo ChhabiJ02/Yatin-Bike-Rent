@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
 class FormImagePicker extends StatefulWidget {
@@ -10,6 +11,7 @@ class FormImagePicker extends StatefulWidget {
   final Function(String?) onImageSelected;
   final bool isUploading;
   final bool compact;
+  final bool cropDocument;
 
   const FormImagePicker({
     super.key,
@@ -19,6 +21,7 @@ class FormImagePicker extends StatefulWidget {
     required this.onImageSelected,
     this.isUploading = false,
     this.compact = false,
+    this.cropDocument = false,
   });
 
   @override
@@ -34,7 +37,11 @@ class _FormImagePickerState extends State<FormImagePicker> {
 
     if (widget.compact) {
       return InkWell(
-        onTap: _isUploading ? null : _showImageSourceActionSheet,
+        onTap: _isUploading
+            ? null
+            : (imageUrl != null && imageUrl.isNotEmpty
+                  ? _showImagePreview
+                  : _showImageSourceActionSheet),
         borderRadius: BorderRadius.circular(10),
         child: Container(
           height: 76,
@@ -46,12 +53,27 @@ class _FormImagePickerState extends State<FormImagePicker> {
           ),
           child: Row(
             children: [
-              Icon(
-                imageUrl != null && imageUrl.isNotEmpty
-                    ? Icons.check_box_outlined
-                    : Icons.badge_outlined,
-                size: 28,
-                color: Colors.black,
+              SizedBox(
+                width: 48,
+                height: 54,
+                child: imageUrl != null && imageUrl.isNotEmpty
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.network(
+                          imageUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => const Icon(
+                            Icons.broken_image_outlined,
+                            size: 28,
+                            color: Colors.black,
+                          ),
+                        ),
+                      )
+                    : const Icon(
+                        Icons.badge_outlined,
+                        size: 28,
+                        color: Colors.black,
+                      ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -71,6 +93,12 @@ class _FormImagePickerState extends State<FormImagePicker> {
                   height: 22,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
+              else if (imageUrl != null && imageUrl.isNotEmpty)
+                IconButton(
+                  tooltip: 'Delete photo',
+                  onPressed: _deleteImage,
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                )
               else
                 Container(
                   width: 38,
@@ -79,7 +107,11 @@ class _FormImagePickerState extends State<FormImagePicker> {
                     color: Colors.black,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 21),
+                  child: const Icon(
+                    Icons.camera_alt_outlined,
+                    color: Colors.white,
+                    size: 21,
+                  ),
                 ),
             ],
           ),
@@ -92,28 +124,37 @@ class _FormImagePickerState extends State<FormImagePicker> {
       mainAxisSize: MainAxisSize.min,
       children: [
         // Image box container
-        Container(
-          width: widget.compact ? double.infinity : 100,
-          height: widget.compact ? 58 : 100,
-          decoration: BoxDecoration(
-            color: Colors.grey.shade200,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade300),
-            image: imageUrl != null && imageUrl!.isNotEmpty
-                ? DecorationImage(
-                    image: NetworkImage(imageUrl!),
-                    fit: BoxFit.cover,
-                  )
-                : null,
-          ),
-          child: _isUploading
-              ? const Center(child: CircularProgressIndicator())
-              : (imageUrl == null || imageUrl.isEmpty
-                  ? IconButton(
-                      icon: Icon(Icons.add_a_photo, color: Colors.grey, size: widget.compact ? 22 : 32),
-                      onPressed: _showImageSourceActionSheet,
+        GestureDetector(
+          onTap: imageUrl != null && imageUrl.isNotEmpty
+              ? _showImagePreview
+              : null,
+          child: Container(
+            width: widget.compact ? double.infinity : 100,
+            height: widget.compact ? 58 : 100,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade300),
+              image: imageUrl != null && imageUrl!.isNotEmpty
+                  ? DecorationImage(
+                      image: NetworkImage(imageUrl!),
+                      fit: BoxFit.cover,
                     )
-                  : null),
+                  : null,
+            ),
+            child: _isUploading
+                ? const Center(child: CircularProgressIndicator())
+                : (imageUrl == null || imageUrl.isEmpty
+                      ? IconButton(
+                          icon: Icon(
+                            Icons.add_a_photo,
+                            color: Colors.grey,
+                            size: widget.compact ? 22 : 32,
+                          ),
+                          onPressed: _showImageSourceActionSheet,
+                        )
+                      : null),
+          ),
         ),
         SizedBox(height: widget.compact ? 4 : 6),
         Text(
@@ -127,7 +168,9 @@ class _FormImagePickerState extends State<FormImagePicker> {
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
-        if (!widget.compact && !_isUploading && (imageUrl == null || imageUrl.isEmpty))
+        if (!widget.compact &&
+            !_isUploading &&
+            (imageUrl == null || imageUrl.isEmpty))
           const Text(
             'No image selected',
             textAlign: TextAlign.center,
@@ -137,6 +180,52 @@ class _FormImagePickerState extends State<FormImagePicker> {
           ),
       ],
     );
+  }
+
+  Future<void> _showImagePreview() async {
+    final imageUrl = widget.imageUrl;
+    if (imageUrl == null || imageUrl.isEmpty) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        child: InteractiveViewer(
+          minScale: 0.8,
+          maxScale: 4,
+          child: Image.network(
+            imageUrl,
+            fit: BoxFit.contain,
+            errorBuilder: (_, _, _) => const Padding(
+              padding: EdgeInsets.all(32),
+              child: Icon(Icons.broken_image_outlined, size: 48),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteImage() async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete photo?'),
+        content: const Text(
+          'This photo will be removed from the challan form.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (shouldDelete == true && mounted) widget.onImageSelected(null);
   }
 
   Future<void> _showImageSourceActionSheet() async {
@@ -178,12 +267,34 @@ class _FormImagePickerState extends State<FormImagePicker> {
 
     try {
       final picker = ImagePicker();
-      final pickedFile = await picker.pickImage(source: source, imageQuality: 70);
+      final pickedFile = await picker.pickImage(
+        source: source,
+        imageQuality: 70,
+      );
 
       if (pickedFile != null) {
-        final imageFile = File(pickedFile.path);
+        final croppedFile = widget.cropDocument
+            ? await ImageCropper().cropImage(
+                sourcePath: pickedFile.path,
+                uiSettings: [
+                  AndroidUiSettings(
+                    toolbarTitle: 'Crop document',
+                    toolbarColor: Colors.black,
+                    toolbarWidgetColor: Colors.white,
+                    lockAspectRatio: false,
+                  ),
+                  IOSUiSettings(title: 'Crop document'),
+                  WebUiSettings(context: context),
+                ],
+              )
+            : null;
+        if (widget.cropDocument && croppedFile == null) return;
+
+        final imageFile = File(croppedFile?.path ?? pickedFile.path);
         final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
-        final storageRef = FirebaseStorage.instance.ref().child('${widget.folder}/$fileName');
+        final storageRef = FirebaseStorage.instance.ref().child(
+          '${widget.folder}/$fileName',
+        );
 
         final uploadTask = storageRef.putFile(imageFile);
         final snapshot = await uploadTask.whenComplete(() => null);
@@ -194,7 +305,9 @@ class _FormImagePickerState extends State<FormImagePicker> {
         }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Image upload failed: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Image upload failed: $e')));
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }

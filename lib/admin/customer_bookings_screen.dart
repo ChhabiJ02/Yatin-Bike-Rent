@@ -2,11 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:street_bike_rental/services/challan_service.dart';
 import 'package:flutter/services.dart';
-import 'package:street_bike_rental/models/customer_documents.dart';
 import 'package:intl/intl.dart';
 
 import '../models/customer.dart';
 import '../screens/challan_entry_screen.dart';
+import '../screens/booking_overview_screen.dart';
 import '../screens/invoice_preview_screen.dart';
 import '../screens/payment_record_screen.dart';
 import '../theme/app_theme.dart';
@@ -25,15 +25,11 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
   String _searchQuery = '';
   String _selectedFilter = 'All';
 
-  final List<String> _filters = const [
-    'All',
-    'Return Pending',
-    'Returned',
-    'Received',
-  ];
+  final List<String> _filters = const ['All', 'Running', 'Returned', 'Due'];
 
-  final _customersCollection =
-      FirebaseFirestore.instance.collection('customers');
+  final _customersCollection = FirebaseFirestore.instance.collection(
+    'customers',
+  );
 
   @override
   void dispose() {
@@ -68,20 +64,57 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
         date.day == now.day;
   }
 
+  bool _isBookingDue(Customer customer) {
+    final handover = customer.vehicleHandover ?? {};
+    if ((handover['returnStatus'] ?? '').toString().toLowerCase() ==
+        'returned') {
+      return false;
+    }
+    final dateText = (handover['vehicleReturnDate'] ?? customer.returnDate)
+        .toString();
+    if (dateText.isEmpty) return false;
+    try {
+      final parts = dateText.split(' ')[0].split('-');
+      if (parts.length != 3) return false;
+      final date = DateTime(
+        int.parse(parts[2]),
+        int.parse(parts[1]),
+        int.parse(parts[0]),
+      );
+      return DateTime.now().isAfter(date);
+    } catch (_) {
+      return false;
+    }
+  }
+
   void _openEntryForm({String? custCode}) {
     Navigator.push(
       context,
+      MaterialPageRoute(builder: (_) => ChallanEntryScreen(custCode: custCode)),
+    );
+  }
+
+  void _openBookingOverview(Customer customer, Map<String, dynamic> docData) {
+    Navigator.push(
+      context,
       MaterialPageRoute(
-        builder: (_) => ChallanEntryScreen(custCode: custCode),
+        builder: (_) => BookingOverviewScreen(
+          customer: customer,
+          docData: docData,
+          onReturn: () => _showReturnDialog(customer.custCode),
+          onExtend: () => _showExtendBookingDialog(customer),
+        ),
       ),
     );
   }
 
   Future<void> _showReturnDialog(String custCode) async {
     final dropDateController = TextEditingController(
-        text: DateFormat('dd-MM-yyyy').format(DateTime.now()));
-    final dropTimeController =
-        TextEditingController(text: TimeOfDay.now().format(context));
+      text: DateFormat('dd-MM-yyyy').format(DateTime.now()),
+    );
+    final dropTimeController = TextEditingController(
+      text: TimeOfDay.now().format(context),
+    );
     final dropLocationController = TextEditingController();
     final endOdometerController = TextEditingController();
     DateTime selectedDate = DateTime.now();
@@ -103,25 +136,30 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Vehicle Return Details',
-                    style: Theme.of(ctx).textTheme.headlineSmall),
+                Text(
+                  'Vehicle Return Details',
+                  style: Theme.of(ctx).textTheme.headlineSmall,
+                ),
                 const SizedBox(height: 20),
                 TextField(
                   controller: dropDateController,
                   decoration: const InputDecoration(
-                      labelText: 'Drop Date',
-                      suffixIcon: Icon(Icons.calendar_today)),
+                    labelText: 'Drop Date',
+                    suffixIcon: Icon(Icons.calendar_today),
+                  ),
                   readOnly: true,
                   onTap: () async {
                     final picked = await showDatePicker(
-                        context: ctx,
-                        initialDate: selectedDate,
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime(2030));
+                      context: ctx,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2030),
+                    );
                     if (picked != null) {
                       selectedDate = picked;
-                      dropDateController.text =
-                          DateFormat('dd-MM-yyyy').format(picked);
+                      dropDateController.text = DateFormat(
+                        'dd-MM-yyyy',
+                      ).format(picked);
                     }
                   },
                 ),
@@ -129,12 +167,15 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                 TextField(
                   controller: dropTimeController,
                   decoration: const InputDecoration(
-                      labelText: 'Drop Time',
-                      suffixIcon: Icon(Icons.access_time)),
+                    labelText: 'Drop Time',
+                    suffixIcon: Icon(Icons.access_time),
+                  ),
                   readOnly: true,
                   onTap: () async {
                     final picked = await showTimePicker(
-                        context: ctx, initialTime: selectedTime);
+                      context: ctx,
+                      initialTime: selectedTime,
+                    );
                     if (picked != null && mounted) {
                       selectedTime = picked;
                       dropTimeController.text = picked.format(ctx);
@@ -144,14 +185,14 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: dropLocationController,
-                  decoration:
-                      const InputDecoration(labelText: 'Drop Location'),
+                  decoration: const InputDecoration(labelText: 'Drop Location'),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: endOdometerController,
                   decoration: const InputDecoration(
-                      labelText: 'Ending Odometer Reading (KM)'),
+                    labelText: 'Ending Odometer Reading (KM)',
+                  ),
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 ),
@@ -166,14 +207,17 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                     final newDropDate = dropDateController.text;
                     final newDropTime = dropTimeController.text;
                     final newDropLocation = dropLocationController.text;
-                    final newKmEndingNumber =
-                        int.tryParse(endOdometerController.text);
+                    final newKmEndingNumber = int.tryParse(
+                      endOdometerController.text,
+                    );
 
                     if (newKmEndingNumber == null) {
                       ScaffoldMessenger.of(ctx).showSnackBar(
                         const SnackBar(
-                            content: Text(
-                                'Please enter a valid ending odometer reading.')),
+                          content: Text(
+                            'Please enter a valid ending odometer reading.',
+                          ),
+                        ),
                       );
                       return;
                     }
@@ -184,16 +228,20 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                       if (doc.exists) {
                         final data = doc.data() ?? {};
                         final handover = Map<String, dynamic>.from(
-                            data['vehicleHandover'] ?? {});
+                          data['vehicleHandover'] ?? {},
+                        );
 
                         // Fetch starting KM from transportation or vehicleHandover
                         final transportation = Map<String, dynamic>.from(
-                            data['transportation'] ?? {});
-                        final int startingKm = int.tryParse(
-                                transportation['kmStartingNumber']?.toString() ??
-                                transportation['startingKm']?.toString() ??
-                                handover['kmStartingNumber']?.toString() ??
-                                '0') ??
+                          data['transportation'] ?? {},
+                        );
+                        final int startingKm =
+                            int.tryParse(
+                              transportation['kmStartingNumber']?.toString() ??
+                                  transportation['startingKm']?.toString() ??
+                                  handover['kmStartingNumber']?.toString() ??
+                                  '0',
+                            ) ??
                             0;
 
                         final int totalKm = (newKmEndingNumber - startingKm) > 0
@@ -218,9 +266,11 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                         if (mounted) {
                           ScaffoldMessenger.of(ctx).showSnackBar(
                             const SnackBar(
-                                content: Text(
-                                    'Vehicle marked as Returned successfully!'),
-                                backgroundColor: Colors.green),
+                              content: Text(
+                                'Vehicle marked as Returned successfully!',
+                              ),
+                              backgroundColor: Colors.green,
+                            ),
                           );
                           Navigator.pop(ctx);
                         }
@@ -229,9 +279,11 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                       if (mounted) {
                         ScaffoldMessenger.of(ctx).showSnackBar(
                           SnackBar(
-                              content: Text(
-                                  'Error marking vehicle as returned: $e'),
-                              backgroundColor: Colors.red),
+                            content: Text(
+                              'Error marking vehicle as returned: $e',
+                            ),
+                            backgroundColor: Colors.red,
+                          ),
                         );
                       }
                     }
@@ -248,7 +300,8 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
   }
 
   Future<void> _showExtendBookingDialog(Customer customer) async {
-    final returnStatus = customer.vehicleHandover?['returnStatus']
+    final returnStatus =
+        customer.vehicleHandover?['returnStatus']
             ?.toString()
             .trim()
             .toLowerCase() ??
@@ -256,7 +309,9 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
     if (!{'pending', 'active'}.contains(returnStatus)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Only active or pending rentals can be extended.')),
+          const SnackBar(
+            content: Text('Only active or pending rentals can be extended.'),
+          ),
         );
       }
       return;
@@ -276,12 +331,17 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              insetPadding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 24,
+              ),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
-              title: const Text('Extend Booking',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: const Text(
+                'Extend Booking',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -297,14 +357,16 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                       children: [
                         IconButton(
                           iconSize: 32,
-                          icon: const Icon(Icons.remove_circle_outline,
-                              color: AppColors.primaryGreen),
+                          icon: const Icon(
+                            Icons.remove_circle_outline,
+                            color: AppColors.primaryGreen,
+                          ),
                           onPressed: () {
                             int currentDays =
                                 int.tryParse(daysController.text) ?? 1;
                             if (currentDays > 1) {
-                              daysController.text =
-                                  (currentDays - 1).toString();
+                              daysController.text = (currentDays - 1)
+                                  .toString();
                               setState(() {
                                 extendedDays = currentDays - 1;
                                 newTotal =
@@ -322,10 +384,12 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                             keyboardType: TextInputType.number,
                             decoration: InputDecoration(
                               labelText: 'Days',
-                              contentPadding:
-                                  const EdgeInsets.symmetric(vertical: 8),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 8,
+                              ),
                               border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10)),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
                             ),
                             onChanged: (value) {
                               final parsed = int.tryParse(value) ?? 0;
@@ -340,13 +404,14 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                         const SizedBox(width: 8),
                         IconButton(
                           iconSize: 32,
-                          icon: const Icon(Icons.add_circle_outline,
-                              color: AppColors.primaryGreen),
+                          icon: const Icon(
+                            Icons.add_circle_outline,
+                            color: AppColors.primaryGreen,
+                          ),
                           onPressed: () {
                             int currentDays =
                                 int.tryParse(daysController.text) ?? 0;
-                            daysController.text =
-                                (currentDays + 1).toString();
+                            daysController.text = (currentDays + 1).toString();
                             setState(() {
                               extendedDays = currentDays + 1;
                               newTotal =
@@ -361,9 +426,10 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                       child: Text(
                         'New Total: ₹${newTotal.toStringAsFixed(2)}',
                         style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.primaryGreen),
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primaryGreen,
+                        ),
                       ),
                     ),
                   ],
@@ -372,19 +438,26 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext),
-                  child:
-                      const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.grey),
+                  ),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryGreen,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                   onPressed: extendedDays > 0
                       ? () => _confirmExtension(
-                          dialogContext, customer, extendedDays, newTotal)
+                          dialogContext,
+                          customer,
+                          extendedDays,
+                          newTotal,
+                        )
                       : null,
                   child: const Text('Confirm'),
                 ),
@@ -396,15 +469,23 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
     );
   }
 
-  Future<void> _confirmExtension(BuildContext dialogContext, Customer customer,
-      int extendedDays, double newTotal) async {
+  Future<void> _confirmExtension(
+    BuildContext dialogContext,
+    Customer customer,
+    int extendedDays,
+    double newTotal,
+  ) async {
     try {
       DateTime baseDate = DateTime.now();
       String preservedTime = '';
 
       // Prefer handover stored time if present
-      if (customer.vehicleHandover != null && (customer.vehicleHandover?['vehicleReturnTime'] ?? '').toString().isNotEmpty) {
-        preservedTime = customer.vehicleHandover!['vehicleReturnTime'].toString();
+      if (customer.vehicleHandover != null &&
+          (customer.vehicleHandover?['vehicleReturnTime'] ?? '')
+              .toString()
+              .isNotEmpty) {
+        preservedTime = customer.vehicleHandover!['vehicleReturnTime']
+            .toString();
       }
 
       if (customer.returnDate.isNotEmpty) {
@@ -442,7 +523,9 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
         final docRefTemp = _customersCollection.doc(customer.custCode);
         final docSnapTemp = await docRefTemp.get();
         if (docSnapTemp.exists && docSnapTemp.data() != null) {
-          final Map<String, dynamic> hand = Map<String, dynamic>.from(docSnapTemp.data()!['vehicleHandover'] ?? {});
+          final Map<String, dynamic> hand = Map<String, dynamic>.from(
+            docSnapTemp.data()!['vehicleHandover'] ?? {},
+          );
           preservedTime = (hand['vehicleReturnTime'] ?? '').toString();
         }
       }
@@ -451,7 +534,8 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
       int minute = 0;
       if (preservedTime.isNotEmpty) {
         try {
-          if (preservedTime.toLowerCase().contains('am') || preservedTime.toLowerCase().contains('pm')) {
+          if (preservedTime.toLowerCase().contains('am') ||
+              preservedTime.toLowerCase().contains('pm')) {
             final dt = DateFormat.jm().parse(preservedTime);
             hour = dt.hour;
             minute = dt.minute;
@@ -466,11 +550,20 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
         }
       }
 
-      baseDate = DateTime(baseDate.year, baseDate.month, baseDate.day, hour, minute);
+      baseDate = DateTime(
+        baseDate.year,
+        baseDate.month,
+        baseDate.day,
+        hour,
+        minute,
+      );
 
       final updatedReturnDate = baseDate.add(Duration(days: extendedDays));
-      final formattedNewDate = DateFormat('dd-MM-yyyy').format(updatedReturnDate);
-      final formattedNewTime = '${updatedReturnDate.hour.toString().padLeft(2, '0')}:${updatedReturnDate.minute.toString().padLeft(2, '0')}';
+      final formattedNewDate = DateFormat(
+        'dd-MM-yyyy',
+      ).format(updatedReturnDate);
+      final formattedNewTime =
+          '${updatedReturnDate.hour.toString().padLeft(2, '0')}:${updatedReturnDate.minute.toString().padLeft(2, '0')}';
 
       final int currentDays = int.tryParse(customer.days) ?? 1;
       final int totalDays = currentDays + extendedDays;
@@ -479,11 +572,15 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
       final docSnap = await docRef.get();
       Map<String, dynamic> handover = {};
       if (docSnap.exists && docSnap.data() != null) {
-        handover = Map<String, dynamic>.from(docSnap.data()!['vehicleHandover'] ?? {});
+        handover = Map<String, dynamic>.from(
+          docSnap.data()!['vehicleHandover'] ?? {},
+        );
       }
       handover['vehicleReturnDate'] = formattedNewDate;
       // Preserve original time if present, else set from computed datetime
-      handover['vehicleReturnTime'] = preservedTime.isNotEmpty ? preservedTime : formattedNewTime;
+      handover['vehicleReturnTime'] = preservedTime.isNotEmpty
+          ? preservedTime
+          : formattedNewTime;
 
       await docRef.update({
         'returnDate': formattedNewDate,
@@ -497,7 +594,8 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-                'Extended return date to $formattedNewDate successfully!'),
+              'Extended return date to $formattedNewDate successfully!',
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -506,8 +604,9 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Error extending booking: $e'),
-              backgroundColor: Colors.red),
+            content: Text('Error extending booking: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -523,14 +622,14 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
     } else if (widget.filterType == 'pending_payments') {
       appBarTitle = "Pending Payments";
     } else {
-      appBarTitle = "Customer Bookings";
+      appBarTitle = "Bookings";
     }
 
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: const Color(0xFFFAFAFA),
       appBar: AppBar(
-        foregroundColor: Colors.white,
-        backgroundColor: AppColors.primaryGreen,
+        foregroundColor: AppColors.ink,
+        backgroundColor: Colors.white,
         elevation: 1,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -539,7 +638,7 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
         ),
         title: Text(
           appBarTitle,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
         bottom: _buildHeader(context),
       ),
@@ -559,14 +658,18 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                   }
                   if (snapshot.hasError) {
                     return Center(
-                      child: Text('Error: ${snapshot.error}',
-                          style: const TextStyle(color: AppColors.muted)),
+                      child: Text(
+                        'Error: ${snapshot.error}',
+                        style: const TextStyle(color: AppColors.muted),
+                      ),
                     );
                   }
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                     return const Center(
-                      child: Text('No customer entries found.',
-                          style: TextStyle(color: AppColors.muted)),
+                      child: Text(
+                        'No customer entries found.',
+                        style: TextStyle(color: AppColors.muted),
+                      ),
                     );
                   }
 
@@ -576,9 +679,13 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                     );
                     final name = customer.name.toLowerCase();
                     final code = customer.custCode.toLowerCase();
-                    final vehicleNo = (customer.vehicleHandover?['vehicleNumber'] ?? '').toString().toLowerCase();
+                    final vehicleNo =
+                        (customer.vehicleHandover?['vehicleNumber'] ?? '')
+                            .toString()
+                            .toLowerCase();
 
-                    final matchesSearch = _searchQuery.isEmpty ||
+                    final matchesSearch =
+                        _searchQuery.isEmpty ||
                         name.contains(_searchQuery.toLowerCase()) ||
                         code.contains(_searchQuery.toLowerCase()) ||
                         vehicleNo.contains(_searchQuery.toLowerCase());
@@ -630,12 +737,14 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                         customer.vehicleHandover?['paymentStatus'] ?? '';
 
                     bool matchesChipFilter = true;
-                    if (_selectedFilter == 'Return Pending') {
-                      matchesChipFilter = returnStatus != 'Returned';
+                    if (_selectedFilter == 'Running') {
+                      matchesChipFilter =
+                          returnStatus.toLowerCase() != 'returned';
                     } else if (_selectedFilter == 'Returned') {
-                      matchesChipFilter = returnStatus == 'Returned';
-                    } else if (_selectedFilter == 'Received') {
-                      matchesChipFilter = paymentStatus == 'Received';
+                      matchesChipFilter =
+                          returnStatus.toLowerCase() == 'returned';
+                    } else if (_selectedFilter == 'Due') {
+                      matchesChipFilter = _isBookingDue(customer);
                     }
 
                     return matchesChipFilter;
@@ -643,8 +752,10 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
 
                   if (customers.isEmpty) {
                     return const Center(
-                      child: Text('No matching entries found.',
-                          style: TextStyle(color: AppColors.muted)),
+                      child: Text(
+                        'No matching entries found.',
+                        style: TextStyle(color: AppColors.muted),
+                      ),
                     );
                   }
 
@@ -662,8 +773,7 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                         docData: docData,
                         onReturn: _showReturnDialog,
                         onExtendBooking: _showExtendBookingDialog,
-                        onEdit: () =>
-                            _openEntryForm(custCode: customer.custCode),
+                        onEdit: () => _openBookingOverview(customer, docData),
                       );
                     },
                   );
@@ -675,8 +785,10 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openEntryForm(),
-        label: const Text('New Entry',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        label: const Text(
+          'New Entry',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         icon: const Icon(Icons.add_business),
         backgroundColor: AppColors.ember,
         foregroundColor: Colors.white,
@@ -697,12 +809,16 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
           decoration: InputDecoration(
             hintText: 'Search by Name, Code, or Vehicle No...',
             hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
-            prefixIcon:
-                Icon(Icons.search, color: Colors.white.withOpacity(0.7)),
+            prefixIcon: Icon(
+              Icons.search,
+              color: Colors.white.withOpacity(0.7),
+            ),
             filled: true,
             fillColor: Colors.white.withOpacity(0.15),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 0,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(30),
               borderSide: BorderSide.none,
@@ -774,21 +890,17 @@ class _CustomerEntryCard extends StatelessWidget {
     final returnStatus =
         customer.vehicleHandover?['returnStatus']?.toString() ?? 'Pending';
     final isReturned = returnStatus.trim().toLowerCase() == 'returned';
-    final customerDocs = customer.customerDocuments != null
-        ? CustomerDocuments.fromMap(customer.customerDocuments!)
-        : CustomerDocuments();
-
     final vehicleName = customer.vehicleName;
     final vehicleNumber = customer.vehicleHandover?['vehicleNumber'] ?? 'N/A';
 
     final pickupDate =
         customer.vehicleHandover?['vehicleGivenDate']?.isNotEmpty == true
-            ? customer.vehicleHandover!['vehicleGivenDate']
-            : customer.sDate;
+        ? customer.vehicleHandover!['vehicleGivenDate']
+        : customer.sDate;
     final pickupTime =
         customer.vehicleHandover?['vehicleGivenTime']?.isNotEmpty == true
-            ? customer.vehicleHandover!['vehicleGivenTime']
-            : DateFormat('HH:mm').format(DateTime.now());
+        ? customer.vehicleHandover!['vehicleGivenTime']
+        : DateFormat('HH:mm').format(DateTime.now());
 
     String returnDate = '';
     String returnTime = '';
@@ -803,9 +915,16 @@ class _CustomerEntryCard extends StatelessWidget {
     if ((handover['vehicleReturnTime'] ?? '').toString().isNotEmpty) {
       returnTime = handover['vehicleReturnTime'].toString();
     } else {
-      returnTime = handover['vehicleReturnDate']?.toString().contains(' ') == true
-          ? handover['vehicleReturnDate'].toString().split(' ').skip(1).join(' ')
-          : (customer.returnDate.contains(' ') ? customer.returnDate.split(' ').skip(1).join(' ') : '--');
+      returnTime =
+          handover['vehicleReturnDate']?.toString().contains(' ') == true
+          ? handover['vehicleReturnDate']
+                .toString()
+                .split(' ')
+                .skip(1)
+                .join(' ')
+          : (customer.returnDate.contains(' ')
+                ? customer.returnDate.split(' ').skip(1).join(' ')
+                : '--');
     }
 
     // Compute overdue: not returned AND now > returnDate+returnTime
@@ -814,18 +933,23 @@ class _CustomerEntryCard extends StatelessWidget {
       if (returnDate.isNotEmpty) {
         // parse date
         final datePart = returnDate.split(' ')[0];
-        List<String> parts = datePart.contains('-') ? datePart.split('-') : datePart.split('/');
+        List<String> parts = datePart.contains('-')
+            ? datePart.split('-')
+            : datePart.split('/');
         if (parts.length == 3) {
           final int day = int.parse(parts[0]);
           final int month = int.parse(parts[1]);
-          final int year = int.parse(parts[2].length == 2 ? '20${parts[2]}' : parts[2]);
+          final int year = int.parse(
+            parts[2].length == 2 ? '20${parts[2]}' : parts[2],
+          );
 
           int hour = 0;
           int minute = 0;
           final rt = returnTime;
           if (rt != null && rt.isNotEmpty && rt != '--') {
             try {
-              if (rt.toLowerCase().contains('am') || rt.toLowerCase().contains('pm')) {
+              if (rt.toLowerCase().contains('am') ||
+                  rt.toLowerCase().contains('pm')) {
                 final dt = DateFormat.jm().parse(rt);
                 hour = dt.hour;
                 minute = dt.minute;
@@ -852,37 +976,54 @@ class _CustomerEntryCard extends StatelessWidget {
 
     // --- Dynamic Calculation Fixes ---
     final double billAmount = double.tryParse(customer.billAmount) ?? 0.0;
-    
+
     // Fetch Paid Amount
-    final double paidAmount = double.tryParse(
+    final double paidAmount =
+        double.tryParse(
           customer.payment?['paymentAmount']?.toString() ??
-          docData['paidAmount']?.toString() ??
-          '0.0') ?? 0.0;
+              docData['paidAmount']?.toString() ??
+              '0.0',
+        ) ??
+        0.0;
 
     // Fetch Deposit Amount
-    final double depositAmount = double.tryParse(
+    final double depositAmount =
+        double.tryParse(
           docData['deposit']?.toString() ??
-          docData['depositAmount']?.toString() ??
-          customer.payment?['depositAmount']?.toString() ??
-          '0.0') ?? 0.0;
+              docData['depositAmount']?.toString() ??
+              customer.payment?['depositAmount']?.toString() ??
+              '0.0',
+        ) ??
+        0.0;
 
     // Dynamic Pending Calculation
-    final double pendingAmount = (billAmount - paidAmount).clamp(0.0, double.infinity);
+    final double pendingAmount = (billAmount - paidAmount).clamp(
+      0.0,
+      double.infinity,
+    );
 
     // Dynamic Odometer & KM Calculations
-    final transportation = Map<String, dynamic>.from(docData['transportation'] ?? {});
-    final handoverDoc = Map<String, dynamic>.from(docData['vehicleHandover'] ?? {});
+    final transportation = Map<String, dynamic>.from(
+      docData['transportation'] ?? {},
+    );
+    final handoverDoc = Map<String, dynamic>.from(
+      docData['vehicleHandover'] ?? {},
+    );
 
-    final int startKm = int.tryParse(
-            transportation['kmStartingNumber']?.toString() ??
-            transportation['startingKm']?.toString() ??
-            handover['kmStartingNumber']?.toString() ??
-            '0') ??
+    final int startKm =
+        int.tryParse(
+          transportation['kmStartingNumber']?.toString() ??
+              transportation['startingKm']?.toString() ??
+              handover['kmStartingNumber']?.toString() ??
+              '0',
+        ) ??
         0;
 
-    final int endKm = int.tryParse(handoverDoc['kmEndingNumber']?.toString() ?? '0') ?? 0;
-    
-    int totalKm = int.tryParse(handoverDoc['totalKmRun']?.toString() ?? '0') ?? 0;
+    final int endKm =
+        int.tryParse(handoverDoc['kmEndingNumber']?.toString() ?? '0') ?? 0;
+
+    int totalKm =
+        int.tryParse(handoverDoc['totalKmRun']?.toString() ?? '0') ?? 0;
     if (totalKm == 0 && endKm > startKm) {
       totalKm = endKm - startKm;
     }
@@ -899,7 +1040,9 @@ class _CustomerEntryCard extends StatelessWidget {
             offset: const Offset(0, 4),
           ),
         ],
-        border: isOverdue ? Border.all(color: Colors.red.withOpacity(0.18)) : null,
+        border: isOverdue
+            ? Border.all(color: Colors.red.withOpacity(0.18))
+            : null,
       ),
       child: Material(
         color: Colors.transparent,
@@ -913,20 +1056,6 @@ class _CustomerEntryCard extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    CircleAvatar(
-                      radius: 32,
-                      backgroundColor: Colors.grey.shade200,
-                      backgroundImage: (customerDocs.customerPhoto != null &&
-                              customerDocs.customerPhoto!.isNotEmpty)
-                          ? NetworkImage(customerDocs.customerPhoto!)
-                          : null,
-                      child: (customerDocs.customerPhoto == null ||
-                              customerDocs.customerPhoto!.isEmpty)
-                          ? Icon(Icons.person,
-                              size: 36, color: Colors.grey.shade400)
-                          : null,
-                    ),
-                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -934,22 +1063,28 @@ class _CustomerEntryCard extends StatelessWidget {
                           Text(
                             customer.name.isNotEmpty ? customer.name : 'N/A',
                             style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.ink),
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.ink,
+                            ),
                           ),
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              const Icon(Icons.phone,
-                                  size: 14, color: AppColors.muted),
+                              const Icon(
+                                Icons.phone,
+                                size: 14,
+                                color: AppColors.muted,
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 customer.smsPhone.isNotEmpty
                                     ? customer.smsPhone
                                     : 'N/A',
                                 style: const TextStyle(
-                                    fontSize: 13, color: AppColors.muted),
+                                  fontSize: 13,
+                                  color: AppColors.muted,
+                                ),
                               ),
                             ],
                           ),
@@ -958,24 +1093,11 @@ class _CustomerEntryCard extends StatelessWidget {
                     ),
                     Align(
                       alignment: Alignment.topRight,
-                      child: isOverdue
-                          ? Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.red.withOpacity(0.25)),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: const [
-                                  Icon(Icons.report_problem, size: 12, color: Colors.red),
-                                  SizedBox(width: 6),
-                                  Text('OVERDUE', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
-                                ],
-                              ),
-                            )
-                          : _ReturnStatusBadge(status: returnStatus),
+                      child: _ReturnStatusBadge(
+                        status: isOverdue
+                            ? 'Due'
+                            : (isReturned ? 'Returned' : 'Running'),
+                      ),
                     ),
                   ],
                 ),
@@ -989,26 +1111,43 @@ class _CustomerEntryCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(vehicleName,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 15)),
+                          Text(
+                            vehicleName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
                           const SizedBox(height: 4),
-                          Text(vehicleNumber,
-                              style: const TextStyle(
-                                  color: AppColors.muted, fontSize: 13)),
+                          Text(
+                            vehicleNumber,
+                            style: const TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 13,
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           Row(
                             children: [
                               _buildDateColumn(
-                                  'Pickup', pickupDate, pickupTime),
+                                'Pickup',
+                                pickupDate,
+                                pickupTime,
+                              ),
                               Container(
                                 height: 35,
                                 width: 1,
                                 color: Colors.grey.shade200,
-                                margin:
-                                    const EdgeInsets.symmetric(horizontal: 12),
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
                               ),
-                              _buildDateColumn('Return', returnDate, returnTime, isOverdue: isOverdue),
+                              _buildDateColumn(
+                                'Return',
+                                returnDate,
+                                returnTime,
+                                isOverdue: isOverdue,
+                              ),
                             ],
                           ),
                         ],
@@ -1023,24 +1162,42 @@ class _CustomerEntryCard extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.primaryGreen.withOpacity(0.05),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.primaryGreen.withOpacity(0.15)),
+                      border: Border.all(
+                        color: AppColors.primaryGreen.withOpacity(0.15),
+                      ),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Start: $startKm KM',
-                            style: const TextStyle(fontSize: 12, color: AppColors.ink)),
-                        Text('End: ${endKm > 0 ? "$endKm KM" : "--"}',
-                            style: const TextStyle(fontSize: 12, color: AppColors.ink)),
-                        Text('Total: $totalKm KM',
-                            style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.primaryGreen)),
+                        Text(
+                          'Start: $startKm KM',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                        Text(
+                          'End: ${endKm > 0 ? "$endKm KM" : "--"}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                        Text(
+                          'Total: $totalKm KM',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primaryGreen,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -1054,19 +1211,25 @@ class _CustomerEntryCard extends StatelessWidget {
                     runSpacing: 4.0,
                     children: [
                       if (customer.hasExtraHelmet)
-                        _buildAddonChip('+ Extra Helmet',
-                            '₹${customer.extraHelmetCharge.toStringAsFixed(0)}'),
+                        _buildAddonChip(
+                          '+ Extra Helmet',
+                          '₹${customer.extraHelmetCharge.toStringAsFixed(0)}',
+                        ),
                       if (customer.hasMobileHolder)
-                        _buildAddonChip('+ Mobile Holder',
-                            '₹${customer.mobileHolderCharge.toStringAsFixed(0)}'),
+                        _buildAddonChip(
+                          '+ Mobile Holder',
+                          '₹${customer.mobileHolderCharge.toStringAsFixed(0)}',
+                        ),
                     ],
                   ),
                 ),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.grey[50],
                     borderRadius: BorderRadius.circular(12),
@@ -1076,22 +1239,25 @@ class _CustomerEntryCard extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         _buildPaymentStat(
-                            'Paid',
-                            '₹${paidAmount.toStringAsFixed(0)}',
-                            Icons.account_balance_wallet,
-                            Colors.green),
+                          'Paid',
+                          '₹${paidAmount.toStringAsFixed(0)}',
+                          Icons.account_balance_wallet,
+                          Colors.green,
+                        ),
                         const VerticalDivider(width: 1),
                         _buildPaymentStat(
-                            'Pending',
-                            '₹${pendingAmount.toStringAsFixed(0)}',
-                            Icons.hourglass_bottom,
-                            Colors.orange),
+                          'Pending',
+                          '₹${pendingAmount.toStringAsFixed(0)}',
+                          Icons.hourglass_bottom,
+                          Colors.orange,
+                        ),
                         const VerticalDivider(width: 1),
                         _buildPaymentStat(
-                            'Deposit',
-                            '₹${depositAmount.toStringAsFixed(0)}',
-                            Icons.shield,
-                            Colors.blue),
+                          'Deposit',
+                          '₹${depositAmount.toStringAsFixed(0)}',
+                          Icons.shield,
+                          Colors.blue,
+                        ),
                       ],
                     ),
                   ),
@@ -1112,10 +1278,13 @@ class _CustomerEntryCard extends StatelessWidget {
                           Icons.receipt_long,
                           () {
                             Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => InvoicePreviewScreen(
-                                        custCode: customer.custCode)));
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => InvoicePreviewScreen(
+                                  custCode: customer.custCode,
+                                ),
+                              ),
+                            );
                           },
                           color: AppColors.primaryGreen,
                         ),
@@ -1128,10 +1297,13 @@ class _CustomerEntryCard extends StatelessWidget {
                           Icons.payment,
                           () {
                             Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => PaymentRecordScreen(
-                                        custCode: customer.custCode)));
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => PaymentRecordScreen(
+                                  custCode: customer.custCode,
+                                ),
+                              ),
+                            );
                           },
                           color: AppColors.primaryGreen,
                         ),
@@ -1149,7 +1321,9 @@ class _CustomerEntryCard extends StatelessWidget {
                                     onExtendBooking!(customer);
                                   }
                                 },
-                          color: isReturned ? Colors.grey : AppColors.primaryGreen,
+                          color: isReturned
+                              ? Colors.grey
+                              : AppColors.primaryGreen,
                         ),
                       ),
                       const VerticalDivider(width: 1),
@@ -1165,8 +1339,9 @@ class _CustomerEntryCard extends StatelessWidget {
                                     onReturn!(customer.custCode);
                                   }
                                 },
-                          color:
-                              isReturned ? Colors.grey : AppColors.primaryGreen,
+                          color: isReturned
+                              ? Colors.grey
+                              : AppColors.primaryGreen,
                         ),
                       ),
                     ],
@@ -1182,26 +1357,33 @@ class _CustomerEntryCard extends StatelessWidget {
 
   Widget _buildAddonChip(String label, String price) {
     return Chip(
-      avatar: const Icon(Icons.add_circle_outline,
-          size: 16, color: AppColors.primaryGreen),
+      avatar: const Icon(
+        Icons.add_circle_outline,
+        size: 16,
+        color: AppColors.primaryGreen,
+      ),
       label: Text('$label ($price)'),
       labelStyle: const TextStyle(
-          color: AppColors.primaryGreen,
-          fontWeight: FontWeight.w600,
-          fontSize: 11),
+        color: AppColors.primaryGreen,
+        fontWeight: FontWeight.w600,
+        fontSize: 11,
+      ),
       backgroundColor: AppColors.primaryGreen.withOpacity(0.1),
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
-        side: BorderSide(
-          color: AppColors.primaryGreen.withOpacity(0.2),
-        ),
+        side: BorderSide(color: AppColors.primaryGreen.withOpacity(0.2)),
       ),
     );
   }
 
-  Widget _buildDateColumn(String title, String date, String time, {bool isOverdue = false}) {
+  Widget _buildDateColumn(
+    String title,
+    String date,
+    String time, {
+    bool isOverdue = false,
+  }) {
     final dateStyle = TextStyle(
       fontWeight: FontWeight.bold,
       fontSize: 13,
@@ -1216,17 +1398,21 @@ class _CustomerEntryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: const TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500)),
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           const SizedBox(height: 2),
           Text(
-              date.isNotEmpty
-                  ? date
-                  : DateFormat('dd-MM-yyyy').format(DateTime.now()),
-              style: dateStyle),
+            date.isNotEmpty
+                ? date
+                : DateFormat('dd-MM-yyyy').format(DateTime.now()),
+            style: dateStyle,
+          ),
           Text(time.isNotEmpty ? time : '--:--', style: timeStyle),
         ],
       ),
@@ -1234,7 +1420,11 @@ class _CustomerEntryCard extends StatelessWidget {
   }
 
   Widget _buildPaymentStat(
-      String label, String value, IconData icon, Color color) {
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Expanded(
       child: Column(
         children: [
@@ -1246,27 +1436,38 @@ class _CustomerEntryCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label,
-                      style: const TextStyle(
-                          fontSize: 11, color: AppColors.muted)),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.muted,
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text(value,
-                      style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: color)),
+                  Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                  ),
                 ],
               ),
             ],
-          )
+          ),
         ],
       ),
     );
   }
 
   Widget _buildActionButton(
-      BuildContext context, String label, IconData icon, VoidCallback? onPressed,
-      {Color color = AppColors.primaryGreen}) {
+    BuildContext context,
+    String label,
+    IconData icon,
+    VoidCallback? onPressed, {
+    Color color = AppColors.primaryGreen,
+  }) {
     return InkWell(
       onTap: onPressed,
       borderRadius: BorderRadius.circular(8),
@@ -1301,11 +1502,15 @@ class _ReturnStatusBadge extends StatelessWidget {
   const _ReturnStatusBadge({this.status = 'Pending'});
 
   Color get _badgeColor {
-    return status == 'Returned' ? AppColors.primaryGreen : AppColors.amber;
+    if (status == 'Returned') return Colors.amber.shade700;
+    if (status == 'Due') return Colors.red;
+    return Colors.green;
   }
 
   IconData get _icon {
-    return status == 'Returned' ? Icons.check_circle : Icons.schedule;
+    if (status == 'Returned') return Icons.check_circle;
+    if (status == 'Due') return Icons.warning_amber_rounded;
+    return Icons.directions_bike;
   }
 
   @override

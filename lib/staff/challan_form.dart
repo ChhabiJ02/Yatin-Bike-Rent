@@ -449,6 +449,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
       children: [
         FormImagePicker(
           label: 'Aadhaar / License - Front',
+          cropDocument: true,
           imageUrl: _customerDocuments?.idFront,
           folder: 'documents',
           onImageSelected: (url) {
@@ -460,6 +461,7 @@ class _ChallanFormWidgetState extends State<_ChallanFormWidget> {
         ),
         FormImagePicker(
           label: 'Aadhaar / License - Back',
+          cropDocument: true,
           imageUrl: _customerDocuments?.idBack,
           folder: 'documents',
           onImageSelected: (url) {
