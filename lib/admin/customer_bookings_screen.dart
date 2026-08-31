@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:street_bike_rental/services/challan_service.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
@@ -10,6 +9,20 @@ import '../screens/booking_overview_screen.dart';
 import '../screens/invoice_preview_screen.dart';
 import '../screens/payment_record_screen.dart';
 import '../theme/app_theme.dart';
+
+String _formatBookingDate(Object? value) {
+  if (value is DateTime) return DateFormat('dd MMM yyyy').format(value);
+  final text = value?.toString().trim() ?? '';
+  if (text.isEmpty) return '-';
+  for (final pattern in ['dd-MM-yyyy', 'dd/MM/yyyy', 'yyyy-MM-dd']) {
+    try {
+      return DateFormat(
+        'dd MMM yyyy',
+      ).format(DateFormat(pattern).parse(text.split(' ').first));
+    } catch (_) {}
+  }
+  return text;
+}
 
 class CustomerBookingsScreen extends StatefulWidget {
   final String? filterType;
@@ -759,24 +772,24 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                     );
                   }
 
-                  return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
-                    itemCount: customers.length,
-                    itemBuilder: (context, index) {
-                      final doc = customers[index];
-                      final docData = doc.data() as Map<String, dynamic>? ?? {};
-                      final customer = Customer.fromFirestore(
-                        doc as DocumentSnapshot<Map<String, dynamic>>,
-                      );
-                      return _CustomerEntryCard(
-                        customer: customer,
-                        docData: docData,
-                        onReturn: _showReturnDialog,
-                        onExtendBooking: _showExtendBookingDialog,
-                        onEdit: () => _openBookingOverview(customer, docData),
-                      );
-                    },
-                  );
+                   return ListView.builder(
+                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+                     itemCount: customers.length,
+                     itemBuilder: (context, index) {
+                       final doc = customers[index];
+                       final docData = doc.data() as Map<String, dynamic>? ?? {};
+                       final customer = Customer.fromFirestore(
+                         doc as DocumentSnapshot<Map<String, dynamic>>,
+                       );
+                       return _CustomerEntryCard(
+                         customer: customer,
+                         docData: docData,
+                         onReturn: _showReturnDialog,
+                         onExtendBooking: _showExtendBookingDialog,
+                         onEdit: () => _openBookingOverview(customer, docData),
+                       );
+                     },
+                   );
                 },
               ),
             ),
@@ -887,6 +900,10 @@ class _CustomerEntryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _buildReferenceCard(context);
+
+    // Legacy card implementation retained below while the reference card is
+    // rolled out; backend data and existing actions remain unchanged.
     final returnStatus =
         customer.vehicleHandover?['returnStatus']?.toString() ?? 'Pending';
     final isReturned = returnStatus.trim().toLowerCase() == 'returned';
@@ -1177,27 +1194,27 @@ class _CustomerEntryCard extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Start: $startKm KM',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                        Text(
-                          'End: ${endKm > 0 ? "$endKm KM" : "--"}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                        Text(
-                          'Total: $totalKm KM',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.primaryGreen,
-                          ),
-                        ),
+                           'Start: $startKm KM',
+                           style: const TextStyle(
+                             fontSize: 12,
+                             color: AppColors.ink,
+                           ),
+                         ),
+                         Text(
+                           'End: ${endKm > 0 ? "$endKm KM" : "--"}',
+                           style: const TextStyle(
+                             fontSize: 12,
+                             color: AppColors.ink,
+                           ),
+                         ),
+                         Text(
+                           'Total: $totalKm KM',
+                           style: const TextStyle(
+                             fontSize: 12,
+                             fontWeight: FontWeight.bold,
+                             color: AppColors.primaryGreen,
+                           ),
+                         ),
                       ],
                     ),
                   ),
@@ -1355,6 +1372,168 @@ class _CustomerEntryCard extends StatelessWidget {
     );
   }
 
+  Widget _buildReferenceCard(BuildContext context) {
+    final handover = customer.vehicleHandover ?? <String, dynamic>{};
+    final transportation = customer.transportation ?? <String, dynamic>{};
+    final rawStatus = (handover['returnStatus'] ?? 'Pending').toString();
+    final isReturned = rawStatus.toLowerCase() == 'returned';
+    final pickupDate = _formatBookingDate(
+      handover['vehicleGivenDate'] ?? customer.sDate,
+    );
+    final returnDate = _formatBookingDate(
+      handover['vehicleReturnDate'] ?? customer.returnDate,
+    );
+    final pickupTime = (handover['vehicleGivenTime'] ?? '').toString();
+    final returnTime = (handover['vehicleReturnTime'] ?? '').toString();
+    final isDue = !isReturned && _isPastReturnDate(returnDate, returnTime);
+    final status = isDue ? 'Due' : (isReturned ? 'Returned' : 'Running');
+    final startKm =
+        transportation['startingKm'] ??
+        transportation['kmStartingNumber'] ??
+        handover['kmStartingNumber'] ??
+        '-';
+    final vehicleNumber =
+        (handover['vehicleNumber'] ?? docData['vehicleEntry']?['no'] ?? 'N/A')
+            .toString();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE5E5E5)),
+      ),
+      child: InkWell(
+        onTap: onEdit,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          customer.name.isEmpty ? 'N/A' : customer.name,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          customer.smsPhone.isEmpty ? 'N/A' : customer.smsPhone,
+                          style: const TextStyle(color: AppColors.muted),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          customer.vehicleName.isEmpty
+                              ? 'Vehicle'
+                              : customer.vehicleName,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          vehicleNumber,
+                          style: const TextStyle(color: AppColors.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _ReturnStatusBadge(status: status),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          const Icon(Icons.calendar_month_outlined, size: 18),
+                          const SizedBox(width: 6),
+                          Text(
+                            '$pickupDate\n to $returnDate',
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (pickupTime.isNotEmpty || returnTime.isNotEmpty)
+                        Text(
+                          '${_formatTime(pickupTime)} - ${_formatTime(returnTime)}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+              const Divider(height: 24),
+              Row(
+                children: [
+                  const Icon(Icons.speed_outlined, size: 18),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Start KM: $startKm km',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatTime(String value) {
+    if (value.isEmpty) return '';
+    try {
+      return DateFormat('HH:mm').format(DateFormat('HH:mm').parse(value));
+    } catch (_) {
+      return value;
+    }
+  }
+
+  bool _isPastReturnDate(String date, String time) {
+    if (date == '-') return false;
+    try {
+      final parsedDate = DateFormat('dd MMM yyyy').parse(date);
+      final parsedTime = time.isEmpty
+          ? const TimeOfDay(hour: 23, minute: 59)
+          : _parseTime(time);
+      return DateTime.now().isAfter(
+        DateTime(
+          parsedDate.year,
+          parsedDate.month,
+          parsedDate.day,
+          parsedTime.hour,
+          parsedTime.minute,
+        ),
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  TimeOfDay _parseTime(String value) {
+    try {
+      final parsed = DateFormat('HH:mm').parse(value);
+      return TimeOfDay(hour: parsed.hour, minute: parsed.minute);
+    } catch (_) {
+      return TimeOfDay.now();
+    }
+  }
+
   Widget _buildAddonChip(String label, String price) {
     return Chip(
       avatar: const Icon(
@@ -1436,12 +1615,12 @@ class _CustomerEntryCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: AppColors.muted,
-                    ),
+                   Text(
+                     label,
+                     style: const TextStyle(
+                       fontSize: 11,
+                       color: AppColors.muted,
+                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(

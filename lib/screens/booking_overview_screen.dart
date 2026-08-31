@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/customer.dart';
 import '../theme/app_theme.dart';
+import 'payment_record_screen.dart';
 
 class BookingOverviewScreen extends StatefulWidget {
   final Customer customer;
   final Map<String, dynamic> docData;
-  final VoidCallback? onReturn;
+  final Future<void> Function()? onReturn;
   final Future<void> Function()? onExtend;
 
   const BookingOverviewScreen({
@@ -119,7 +121,7 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: AppColors.muted),
+          Icon(icon, size: 20, color: AppColors.ink),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -127,12 +129,15 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                  style: const TextStyle(fontSize: 11, color: AppColors.ink),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   value,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
+                  ),
                 ),
               ],
             ),
@@ -660,6 +665,122 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
           'Edit Booking',
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Tooltip(
+              message: 'Record Payment',
+              child: Material(
+                color: Colors.white,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  onTap: () async {
+                    final paid = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => PaymentRecordScreen(
+                          custCode: widget.customer.custCode,
+                          initialAmount: widget.customer.billAmount,
+                        ),
+                      ),
+                    );
+                    if (paid is String && mounted) {
+                      setState(() {
+                        _paid = paid;
+                        _data['paidAmount'] = paid;
+                      });
+                    }
+                  },
+                  customBorder: const CircleBorder(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(11),
+                    child: Icon(
+                      Icons.currency_rupee,
+                      color: Colors.green,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Tooltip(
+              message: 'Open WhatsApp',
+              child: Material(
+                color: Colors.white,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  onTap: _openWhatsApp,
+                  customBorder: const CircleBorder(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(11),
+                    child: Icon(
+                      Icons.chat_outlined,
+                      color: Colors.green,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Tooltip(
+              message: 'Delete Booking',
+              child: Material(
+                color: Colors.white,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  onTap: () async {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (dialogContext) => AlertDialog(
+                        title: const Text('Delete Booking'),
+                        content: const Text(
+                          'Are you sure you want to delete this booking? This action cannot be undone.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () =>
+                                Navigator.pop(dialogContext, false),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            onPressed: () =>
+                                Navigator.pop(dialogContext, true),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.red,
+                            ),
+                            child: const Text('Delete'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmed == true && mounted) {
+                      await FirebaseFirestore.instance
+                          .collection('customers')
+                          .doc(widget.customer.custCode)
+                          .delete();
+                      if (mounted) Navigator.pop(context);
+                    }
+                  },
+                  customBorder: const CircleBorder(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(11),
+                    child: Icon(
+                      Icons.delete_outline,
+                      color: Colors.red,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -792,7 +913,7 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: returned ? null : widget.onReturn,
+                    onPressed: returned ? null : () => widget.onReturn?.call(),
                     icon: const Icon(Icons.refresh),
                     label: Text(returned ? 'Returned' : 'Return Vehicle'),
                     style: ElevatedButton.styleFrom(
@@ -815,7 +936,7 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 11, color: AppColors.muted),
+          style: const TextStyle(fontSize: 11, color: AppColors.ink),
         ),
         const SizedBox(height: 4),
         Text(
@@ -827,6 +948,17 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _openWhatsApp() async {
+    final phone = (_phone.isEmpty ? _whatsapp : _phone).replaceAll(RegExp(r'\D'), '');
+    if (phone.isEmpty) return;
+    final dialCode = phone.length == 10 ? '91' : '';
+    final uri = Uri.https('wa.me', '/$dialCode$phone', {
+      'text':
+          'Booking details: $_name, ${widget.customer.vehicleName}, ${_handover['vehicleNumber'] ?? 'N/A'}, ${_handover['vehicleGivenDate'] ?? widget.customer.sDate} to ${_handover['vehicleReturnDate'] ?? widget.customer.returnDate}.',
+    });
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }
 
