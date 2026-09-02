@@ -358,13 +358,6 @@ class InvoiceService {
               ),
               pw.SizedBox(height: 16),
 
-              // Staff Name
-              pw.Center(
-                child: pw.Text(
-                  'Staff: ${invoice.staffName}',
-                  style: const pw.TextStyle(fontSize: 10),
-                ),
-              ),
             ],
           );
         },
@@ -441,15 +434,13 @@ class InvoiceService {
     String? companyName,
     String? companyAddress,
     String? gstNumber,
-    String? staffName,
   }) async {
     if (challanData.invoice == null) {
       throw Exception('No invoice data found');
     }
 
-    final invoice = challanData.invoice!.copyWith(staffName: staffName ?? '');
     return generateInvoicePdf(
-      invoice: invoice,
+      invoice: challanData.invoice!,
       companyName: companyName,
       companyAddress: companyAddress,
       gstNumber: gstNumber,

@@ -53,6 +53,57 @@ String? extractDrivingLicenseName(String text) {
   );
 }
 
+String? extractAadhaarName(String text) {
+  final lines = _textLines(text);
+  final labelledName = RegExp(
+    r'^(?:name|नाम|नाम\s*name)\s*[:.-]?\s*(.+)$',
+    caseSensitive: false,
+  );
+  for (final line in lines) {
+    final match = labelledName.firstMatch(line);
+    if (match != null && _isAadhaarNameCandidate(match.group(1)!))
+      return match.group(1)!.trim();
+  }
+
+  for (final line in lines) {
+    if (line.isEmpty) continue;
+    if (_isAadhaarNameCandidate(line) && _looksLikeAadhaarNameLine(line))
+      return line;
+  }
+
+  return null;
+}
+
+bool _looksLikeAadhaarNameLine(String line) {
+  final lower = line.toLowerCase();
+  if (lower.contains('government') || lower.contains('india')) return false;
+  if (lower.contains('uid') || lower.contains('unique')) return false;
+  if (lower.contains('date') || lower.contains('dob') || lower.contains('birth'))
+    return false;
+  if (lower.contains('father') ||
+      lower.contains('husband') ||
+      lower.contains('mother')) return false;
+  if (lower.contains('male') ||
+      lower.contains('female') ||
+      lower.contains('transgender')) return false;
+  if (lower.contains('address') ||
+      lower.contains('residing') ||
+      lower.contains('s/o') ||
+      lower.contains('d/o') ||
+      lower.contains('c/o')) return false;
+  if (RegExp(r'\d{4}\s?\d{4}\s?\d{4}').hasMatch(line)) return false;
+  if (RegExp(r'^[6-9]\d{9}$').hasMatch(line.replaceAll(' ', ''))) return false;
+  return true;
+}
+
+bool _isAadhaarNameCandidate(String value) {
+  final normalized = value.toLowerCase();
+  return RegExp(r"""^[a-z .\-']{2,50}$""").hasMatch(normalized) &&
+      !RegExp(
+        r'government|india|address|valid|dob|blood|class|driving|licen|transport|uid|unique|male|female|transgender|father|husband|mother|s/o|d/o|c/o|date|birth|year|yrs|years',
+      ).hasMatch(normalized);
+}
+
 String? extractDrivingLicenseCity(String text) {
   final lines = _textLines(text);
   final labelledCity = RegExp(

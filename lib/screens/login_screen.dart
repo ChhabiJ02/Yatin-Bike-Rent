@@ -5,7 +5,6 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../admin/admin_dashboard.dart';
 import '../customer/customer_dashboard.dart';
-import '../staff/staff_dashboard.dart';
 import 'register_screen.dart';
 import '../services/auth_service.dart';
 
@@ -131,8 +130,6 @@ class _LoginScreenState extends State<LoginScreen> {
       Widget destination;
       if (roleFromDb == 'Admin') {
         destination = const AdminDashboard();
-      } else if (roleFromDb == 'Staff') {
-        destination = const StaffDashboard();
       } else {
         destination = const CustomerDashboard();
       }

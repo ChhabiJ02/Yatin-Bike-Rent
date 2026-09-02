@@ -727,7 +727,10 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       _phoneController.text = phone;
     if (license != null)
       _licenseController.text = license.replaceAll(' ', '').toUpperCase();
-    final name = extractDrivingLicenseName(text);
+
+    final name = _scanDocument == 'Aadhaar'
+        ? extractAadhaarName(text)
+        : extractDrivingLicenseName(text);
     if (name != null && _partyNameController.text.isEmpty) {
       _partyNameController.text = name;
     }
@@ -2214,26 +2217,11 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
                   ],
                 ),
                 const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildTextField(
-                        _daysController,
-                        'Days',
-                        keyboardType: TextInputType.number,
-                        icon: Icons.numbers_outlined,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _buildTextField(
-                        _rateController,
-                        'Rate/Day',
-                        keyboardType: TextInputType.number,
-                        icon: Icons.currency_rupee,
-                      ),
-                    ),
-                  ],
+                _buildTextField(
+                  _rateController,
+                  'Rate/Day',
+                  keyboardType: TextInputType.number,
+                  icon: Icons.currency_rupee,
                 ),
               ],
             ),
@@ -2253,44 +2241,22 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextFormField(
-                  controller: _vehicleEntryNoController,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    labelText: 'No',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  textInputAction: TextInputAction.search,
-                  onFieldSubmitted: (_) async {
-                    setDialogState(() {});
-                    await _searchVehicle();
-                    if (dialogContext.mounted) setDialogState(() {});
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _vehicleEntryNameController,
-                  decoration: InputDecoration(
-                    labelText: 'Vehicle Name',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-                if (_vehicleNumberController.text.trim().isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'Number Plate',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: Text(_vehicleNumberController.text.trim()),
-                  ),
-                ],
+                 TextFormField(
+                   controller: _vehicleEntryNoController,
+                   autofocus: true,
+                   decoration: InputDecoration(
+                     labelText: 'No',
+                     border: OutlineInputBorder(
+                       borderRadius: BorderRadius.circular(12),
+                     ),
+                   ),
+                   textInputAction: TextInputAction.search,
+                   onFieldSubmitted: (_) async {
+                     setDialogState(() {});
+                     await _searchVehicle();
+                     if (dialogContext.mounted) setDialogState(() {});
+                   },
+                 ),
               ],
             ),
             actions: [
@@ -2298,29 +2264,23 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
                 onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('Cancel'),
               ),
-              FilledButton.icon(
+              ElevatedButton(
                 onPressed: _isSearchingVehicle
                     ? null
                     : () async {
                         setDialogState(() {});
                         await _searchVehicle();
-                        if (dialogContext.mounted) setDialogState(() {});
+                        final navigator = Navigator.of(dialogContext);
+                        if (mounted) setState(() {});
+                        if (navigator.canPop()) navigator.pop();
                       },
-                icon: _isSearchingVehicle
+                child: _isSearchingVehicle
                     ? const SizedBox(
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.search),
-                label: const Text('Enter'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  setState(() {});
-                  Navigator.pop(dialogContext);
-                },
-                child: const Text('Done'),
+                    : const Text('OK'),
               ),
             ],
           );

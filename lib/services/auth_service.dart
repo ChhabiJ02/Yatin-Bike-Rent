@@ -8,10 +8,9 @@ class AuthService {
   static Stream<User?> authStateChanges() {
     return _auth.authStateChanges();
   }
-  static const _validRoles = {'Admin', 'Staff', 'Customer'};
+  static const _validRoles = {'Admin', 'Customer'};
   static const Map<String, String> _emailAliases = {
     'admin': 'admin@gmail.com',
-    'staff': 'staff@gmail.com',
     'customer': 'customer@gmail.com',
   };
 

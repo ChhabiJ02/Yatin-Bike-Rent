@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../admin/admin_dashboard.dart';
 import '../customer/customer_dashboard.dart';
 import '../services/auth_service.dart';
-import '../staff/staff_dashboard.dart';
 import '../theme/app_theme.dart';
 import 'login_screen.dart';
 
@@ -104,8 +103,6 @@ class _SplashScreenState extends State<SplashScreen>
     Widget destination;
     if (role == 'Admin') {
       destination = const AdminDashboard();
-    } else if (role == 'Staff') {
-      destination = const StaffDashboard();
     } else {
       destination = const CustomerDashboard();
     }

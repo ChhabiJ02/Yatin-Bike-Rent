@@ -25,20 +25,20 @@ class AppSettingsMenu extends StatelessWidget {
   void _showProfileMenu(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => const _StaffProfileScreen(),
+        builder: (context) => const _UserProfileScreen(),
       ),
     );
   }
 }
 
-class _StaffProfileScreen extends StatefulWidget {
-  const _StaffProfileScreen();
+class _UserProfileScreen extends StatefulWidget {
+  const _UserProfileScreen();
 
   @override
-  State<_StaffProfileScreen> createState() => _StaffProfileScreenState();
+  State<_UserProfileScreen> createState() => _UserProfileScreenState();
 }
 
-class _StaffProfileScreenState extends State<_StaffProfileScreen> {
+class _UserProfileScreenState extends State<_UserProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();

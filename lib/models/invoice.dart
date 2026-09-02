@@ -21,7 +21,6 @@ class Invoice {
   final String gst;
   final String grandTotal;
   final String paymentStatus;
-  final String staffName;
   final String? pdfPath;
 
   Invoice({
@@ -47,7 +46,6 @@ class Invoice {
     this.gst = '',
     this.grandTotal = '',
     this.paymentStatus = 'Pending',
-    this.staffName = '',
     this.pdfPath,
   });
 
@@ -74,7 +72,6 @@ class Invoice {
     String? gst,
     String? grandTotal,
     String? paymentStatus,
-    String? staffName,
     String? pdfPath,
   }) {
     return Invoice(
@@ -100,7 +97,6 @@ class Invoice {
       gst: gst ?? this.gst,
       grandTotal: grandTotal ?? this.grandTotal,
       paymentStatus: paymentStatus ?? this.paymentStatus,
-      staffName: staffName ?? this.staffName,
       pdfPath: pdfPath ?? this.pdfPath,
     );
   }
@@ -129,7 +125,6 @@ class Invoice {
       'gst': gst,
       'grandTotal': grandTotal,
       'paymentStatus': paymentStatus,
-      'staffName': staffName,
       if (pdfPath != null) 'pdfPath': pdfPath,
     };
   }
@@ -158,7 +153,6 @@ class Invoice {
       gst: map['gst'] ?? '',
       grandTotal: map['grandTotal'] ?? '',
       paymentStatus: map['paymentStatus'] ?? 'Pending',
-      staffName: map['staffName'] ?? '',
       pdfPath: map['pdfPath'],
     );
   }

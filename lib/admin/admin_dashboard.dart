@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 import 'package:street_bike_rental/admin/customer_bookings_screen.dart';
 import 'package:street_bike_rental/admin/customer_list_screen.dart';
 import 'package:street_bike_rental/admin/profile_screen.dart';
-import 'package:street_bike_rental/admin/staff_management_screen.dart';
 import 'package:street_bike_rental/admin/vehicle_management_screen.dart';
 
 import '../screens/login_screen.dart';
@@ -292,43 +291,6 @@ class AdminDashboard extends StatelessWidget {
                                 context,
                                 MaterialPageRoute(
                                   builder: (_) => const CustomerListScreen(),
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 8),
-
-                      // Card 4: Staff Count
-                      StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('users')
-                            .snapshots(),
-                        builder: (context, snapshot) {
-                          final docs = snapshot.data?.docs ?? [];
-                          final staffCount = docs.where((doc) {
-                            final data = doc.data() as Map<String, dynamic>;
-                            final role = data['role']
-                                ?.toString()
-                                .toLowerCase()
-                                .trim();
-                            return role == 'staff' || role == 'admin';
-                          }).length;
-
-                          return _buildTopStatCard(
-                            title: 'Staff',
-                            value: '$staffCount',
-                            icon: Icons.badge_outlined,
-                            iconColor: const Color(0xFF7C3AED),
-                            bgColor: const Color(0xFFF5F3FF),
-                            valueColor: const Color(0xFF7C3AED),
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      const StaffManagementScreen(),
                                 ),
                               );
                             },
