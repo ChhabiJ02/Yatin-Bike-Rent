@@ -122,191 +122,301 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
   }
 
   Future<void> _showReturnDialog(String custCode) async {
-    final dropDateController = TextEditingController(
-      text: DateFormat('dd-MM-yyyy').format(DateTime.now()),
-    );
-    final dropTimeController = TextEditingController(
-      text: TimeOfDay.now().format(context),
+    final dropDateTimeController = TextEditingController(
+      text: DateFormat('dd-MM-yyyy HH:mm').format(DateTime.now()),
     );
     final dropLocationController = TextEditingController();
     final endOdometerController = TextEditingController();
     DateTime selectedDate = DateTime.now();
     TimeOfDay selectedTime = TimeOfDay.now();
 
+    // Pre-fetch the saved start KM (if any) so the KM summary can display
+    // it immediately and we can validate End KM >= Start KM on submit.
+    int startKm = 0;
+    try {
+      final preview = await _customersCollection.doc(custCode).get();
+      if (preview.exists && preview.data() != null) {
+        final Map<String, dynamic> hand = Map<String, dynamic>.from(
+          preview.data()!['vehicleHandover'] ?? {},
+        );
+        final Map<String, dynamic> trn = Map<String, dynamic>.from(
+          preview.data()!['transportation'] ?? {},
+        );
+        startKm =
+            int.tryParse(
+              trn['kmStartingNumber']?.toString() ??
+                  trn['startingKm']?.toString() ??
+                  hand['kmStartingNumber']?.toString() ??
+                  '0',
+            ) ??
+            0;
+      }
+    } catch (_) {
+      startKm = 0;
+    }
+
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (BuildContext ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-            top: 20,
-            left: 20,
-            right: 20,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Vehicle Return Details',
-                  style: Theme.of(ctx).textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: dropDateController,
-                  decoration: const InputDecoration(
-                    labelText: 'Drop Date',
-                    suffixIcon: Icon(Icons.calendar_today),
-                  ),
-                  readOnly: true,
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: ctx,
-                      initialDate: selectedDate,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2030),
-                    );
-                    if (picked != null) {
-                      selectedDate = picked;
-                      dropDateController.text = DateFormat(
-                        'dd-MM-yyyy',
-                      ).format(picked);
-                    }
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: dropTimeController,
-                  decoration: const InputDecoration(
-                    labelText: 'Drop Time',
-                    suffixIcon: Icon(Icons.access_time),
-                  ),
-                  readOnly: true,
-                  onTap: () async {
-                    final picked = await showTimePicker(
-                      context: ctx,
-                      initialTime: selectedTime,
-                    );
-                    if (picked != null && mounted) {
-                      selectedTime = picked;
-                      dropTimeController.text = picked.format(ctx);
-                    }
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: dropLocationController,
-                  decoration: const InputDecoration(labelText: 'Drop Location'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: endOdometerController,
-                  decoration: const InputDecoration(
-                    labelText: 'Ending Odometer Reading (KM)',
-                  ),
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(50),
-                    backgroundColor: AppColors.primaryGreen,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () async {
-                    final newDropDate = dropDateController.text;
-                    final newDropTime = dropTimeController.text;
-                    final newDropLocation = dropLocationController.text;
-                    final newKmEndingNumber = int.tryParse(
-                      endOdometerController.text,
-                    );
-
-                    if (newKmEndingNumber == null) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Please enter a valid ending odometer reading.',
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+                top: 20,
+                left: 20,
+                right: 20,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Vehicle Return Details',
+                      style: Theme.of(ctx).textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 20),
+                    TextField(
+                      controller: dropDateTimeController,
+                      decoration: const InputDecoration(
+                        labelText: 'Drop Date & Time',
+                        suffixIcon: Icon(Icons.calendar_today),
+                      ),
+                      readOnly: true,
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: ctx,
+                          initialDate: selectedDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2030),
+                        );
+                        if (picked != null) {
+                          selectedDate = picked;
+                          final time = await showTimePicker(
+                            context: ctx,
+                            initialTime: selectedTime,
+                          );
+                          if (time != null) {
+                            selectedTime = time;
+                          }
+                          final combined = DateTime(
+                            picked.year,
+                            picked.month,
+                            picked.day,
+                            selectedTime.hour,
+                            selectedTime.minute,
+                          );
+                          dropDateTimeController.text =
+                              DateFormat('dd-MM-yyyy HH:mm').format(combined);
+                          setSheetState(() {});
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: dropLocationController,
+                      decoration: const InputDecoration(
+                        labelText: 'Drop Location',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: endOdometerController,
+                      decoration: const InputDecoration(
+                        labelText: 'Ending Odometer Reading (KM)',
+                      ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      onChanged: (_) => setSheetState(() {}),
+                    ),
+                    const SizedBox(height: 16),
+                    // KM Calculation Summary
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF6F6F6),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'KM Calculation Summary',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                      );
-                      return;
-                    }
-
-                    try {
-                      final docRef = _customersCollection.doc(custCode);
-                      final doc = await docRef.get();
-                      if (doc.exists) {
-                        final data = doc.data() ?? {};
-                        final handover = Map<String, dynamic>.from(
-                          data['vehicleHandover'] ?? {},
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Start KM'),
+                              Text(
+                                '$startKm',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('End KM'),
+                              Text(
+                                endOdometerController.text.isEmpty
+                                    ? '--'
+                                    : endOdometerController.text,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Total Distance',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              Builder(
+                                builder: (_) {
+                                  final endKm = int.tryParse(
+                                    endOdometerController.text,
+                                  );
+                                  if (endKm == null) {
+                                    return const Text('--');
+                                  }
+                                  final total = endKm - startKm;
+                                  return Text(
+                                    '$total km',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: total < 0
+                                          ? Colors.red
+                                          : Colors.green,
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(50),
+                        backgroundColor: AppColors.primaryGreen,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () async {
+                        final newDropDateTime = dropDateTimeController.text;
+                        final newDropLocation = dropLocationController.text;
+                        final newKmEndingNumber = int.tryParse(
+                          endOdometerController.text,
                         );
 
-                        // Fetch starting KM from transportation or vehicleHandover
-                        final transportation = Map<String, dynamic>.from(
-                          data['transportation'] ?? {},
-                        );
-                        final int startingKm =
-                            int.tryParse(
-                              transportation['kmStartingNumber']?.toString() ??
-                                  transportation['startingKm']?.toString() ??
-                                  handover['kmStartingNumber']?.toString() ??
-                                  '0',
-                            ) ??
-                            0;
-
-                        final int totalKm = (newKmEndingNumber - startingKm) > 0
-                            ? (newKmEndingNumber - startingKm)
-                            : 0;
-
-                        handover['returnStatus'] = 'Returned';
-                        handover['vehicleReturnDate'] = newDropDate;
-                        handover['vehicleReturnTime'] = newDropTime;
-                        handover['dropLocation'] = newDropLocation;
-                        handover['kmEndingNumber'] = newKmEndingNumber;
-                        handover['kmStartingNumber'] = startingKm;
-                        handover['totalKmRun'] = totalKm;
-                        handover['returnUpdatedAt'] =
-                            FieldValue.serverTimestamp();
-
-                        await docRef.update({
-                          'vehicleHandover': handover,
-                          'returnDate': newDropDate,
-                        });
-
-                        if (mounted) {
+                        if (newKmEndingNumber == null) {
                           ScaffoldMessenger.of(ctx).showSnackBar(
                             const SnackBar(
                               content: Text(
-                                'Vehicle marked as Returned successfully!',
+                                'Please enter a valid ending odometer reading.',
                               ),
-                              backgroundColor: Colors.green,
                             ),
                           );
-                          Navigator.pop(ctx);
+                          return;
                         }
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Error marking vehicle as returned: $e',
+
+                        if (newKmEndingNumber < startKm) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'End KM ($newKmEndingNumber) cannot be less than Start KM ($startKm).',
+                              ),
+                              backgroundColor: Colors.red,
                             ),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    }
-                  },
-                  child: const Text('Confirm Return'),
+                          );
+                          return;
+                        }
+
+                        try {
+                          final docRef = _customersCollection.doc(custCode);
+                          final doc = await docRef.get();
+                          if (doc.exists) {
+                            final data = doc.data() ?? {};
+                            final handover = Map<String, dynamic>.from(
+                              data['vehicleHandover'] ?? {},
+                            );
+
+                            // Split combined "Drop Date & Time" into the
+                            // existing date + time fields for compatibility.
+                            final datePart = newDropDateTime.split(' ').first;
+                            final timePart = newDropDateTime.contains(' ')
+                                ? newDropDateTime.substring(
+                                    newDropDateTime.indexOf(' ') + 1,
+                                  )
+                                : '';
+
+                            final int totalKm =
+                                newKmEndingNumber - startKm;
+
+                            handover['returnStatus'] = 'Returned';
+                            handover['vehicleReturnDate'] = datePart;
+                            handover['vehicleReturnTime'] = timePart;
+                            handover['dropLocation'] = newDropLocation;
+                            handover['kmEndingNumber'] = newKmEndingNumber;
+                            handover['kmStartingNumber'] = startKm;
+                            handover['totalKmRun'] = totalKm;
+                            handover['returnUpdatedAt'] =
+                                FieldValue.serverTimestamp();
+
+                            await docRef.update({
+                              'vehicleHandover': handover,
+                              'returnDate': datePart,
+                            });
+
+                            if (mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Vehicle marked as Returned successfully!',
+                                  ),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                              Navigator.pop(ctx);
+                            }
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Error marking vehicle as returned: $e',
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text('Confirm Return'),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
                 ),
-                const SizedBox(height: 20),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -333,10 +443,13 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
     int extendedDays = 1;
     final daysController = TextEditingController(text: '1');
 
-    final double basePrice = double.tryParse(customer.billAmount) ?? 0.0;
+    // For the extension, charge ONLY the daily rate * additional days.
+    // Add-ons (helmet / mobile holder) are one-time charges and must NOT
+    // be added again when extending an existing rental.
     final double perDayRate = double.tryParse(customer.rate) ?? 0.0;
-
-    double newTotal = basePrice + (extendedDays * perDayRate);
+    double additionalCharge = extendedDays * perDayRate;
+    double newTotal =
+        (double.tryParse(customer.billAmount) ?? 0.0) + additionalCharge;
 
     await showDialog(
       context: context,
@@ -382,8 +495,12 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                                   .toString();
                               setState(() {
                                 extendedDays = currentDays - 1;
+                                additionalCharge =
+                                    extendedDays * perDayRate;
                                 newTotal =
-                                    basePrice + (extendedDays * perDayRate);
+                                    (double.tryParse(customer.billAmount) ??
+                                            0.0) +
+                                        additionalCharge;
                               });
                             }
                           },
@@ -408,8 +525,11 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                               final parsed = int.tryParse(value) ?? 0;
                               setState(() {
                                 extendedDays = parsed;
+                                additionalCharge = extendedDays * perDayRate;
                                 newTotal =
-                                    basePrice + (extendedDays * perDayRate);
+                                    (double.tryParse(customer.billAmount) ??
+                                            0.0) +
+                                        additionalCharge;
                               });
                             },
                           ),
@@ -427,14 +547,28 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                             daysController.text = (currentDays + 1).toString();
                             setState(() {
                               extendedDays = currentDays + 1;
+                              additionalCharge = extendedDays * perDayRate;
                               newTotal =
-                                  basePrice + (extendedDays * perDayRate);
+                                  (double.tryParse(customer.billAmount) ??
+                                          0.0) +
+                                      additionalCharge;
                             });
                           },
                         ),
                       ],
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 12),
+                    Center(
+                      child: Text(
+                        'Additional: ₹${additionalCharge.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
                     Center(
                       child: Text(
                         'New Total: ₹${newTotal.toStringAsFixed(2)}',

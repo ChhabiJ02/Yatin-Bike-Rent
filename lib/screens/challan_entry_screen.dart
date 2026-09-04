@@ -69,7 +69,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   final _vehicleController = TextEditingController();
   final _vehicleNumberController = TextEditingController();
   final _daysController = TextEditingController();
-  final _rateController = TextEditingController();
   final _billAmountController = TextEditingController();
   final _depositController = TextEditingController();
   final _referenceIdController = TextEditingController();
@@ -115,6 +114,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   final int _totalSteps = 3;
 
   // Add-ons State
+  int _selectedHelmetOption = 1;
   bool _hasExtraHelmet = false;
   bool _hasMobileHolder = false;
 
@@ -124,6 +124,9 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
   // Searching State
   bool _isSearchingVehicle = false;
+
+  // Vehicle daily rate (auto-fetched from vehicle record)
+  double _vehicleDailyRate = 0;
 
   // Date/Time for vehicle handover
   DateTime? _vehicleGivenDate;
@@ -170,7 +173,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
   // Auto calculate Bill Amount
   void _calculateBillAmount() {
     final double days = double.tryParse(_daysController.text.trim()) ?? 0;
-    final double rate = double.tryParse(_rateController.text.trim()) ?? 0;
+    final double rate = _vehicleDailyRate;
     final double baseTotal = days * rate;
 
     final double helmetCharge = _hasExtraHelmet ? _extraHelmetCharge : 0;
@@ -225,6 +228,22 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
   void _nextStep() {
     if (_currentStep < _totalSteps - 1) {
+      if (_currentStep == 1) {
+        final daysText = _daysController.text.trim();
+        final days = double.tryParse(daysText);
+        if (daysText.isEmpty || days == null || days <= 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please enter days'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          if (_formKey.currentState != null) {
+            _formKey.currentState!.validate();
+          }
+          return;
+        }
+      }
       setState(() {
         _currentStep++;
       });
@@ -237,13 +256,13 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     }
   }
 
-  Future<void> _searchVehicle() async {
+  Future<bool> _searchVehicle() async {
     final vehicleNo = _vehicleEntryNoController.text.trim();
     if (vehicleNo.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a vehicle number.')),
       );
-      return;
+      return false;
     }
 
     setState(() {
@@ -263,6 +282,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               backgroundColor: Colors.green,
             ),
           );
+          return true;
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -288,6 +308,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         });
       }
     }
+    return false;
   }
 
   void _populateVehicleEntryFields(
@@ -298,7 +319,8 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
 
     _vehicleEntryNameController.text =
         data['name'] ?? data['vehicleName'] ?? '';
-    _rateController.text = data['dailyRate']?.toString() ?? '';
+    _vehicleDailyRate =
+        double.tryParse(data['dailyRate']?.toString() ?? '0') ?? 0;
 
     if (_vehicleNumberController.text.isEmpty) {
       _vehicleNumberController.text =
@@ -744,9 +766,14 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     _fyearController.text = initialFyear;
 
     _daysController.addListener(_calculateBillAmount);
-    _rateController.addListener(_calculateBillAmount);
     _phoneController.addListener(_onPhoneChanged);
     _loadPaymentMethods();
+
+    _vehicleGivenDate = DateTime.now();
+    _vehicleGivenTime = TimeOfDay.now();
+    _vehicleReturnDate = DateTime.now();
+    _vehicleReturnTime = TimeOfDay.now();
+    _pickupLocationController.text = 'Office';
 
     if (widget.custCode != null) {
       _custCodeController.text = widget.custCode ?? '';
@@ -763,7 +790,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     _registerFocusNode(_partyNameController, 0);
     _registerFocusNode(_phoneController, 0);
     _registerFocusNode(_daysController, 2);
-    _registerFocusNode(_rateController, 2);
   }
 
   Future<void> _loadPaymentMethods() async {
@@ -829,7 +855,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       _licenseController.text = customer.licenceNo;
       _vehicleController.text = customer.vehicleName;
       _daysController.text = customer.days;
-      _rateController.text = customer.rate;
+      _vehicleDailyRate = double.tryParse(customer.rate) ?? 0;
       _billAmountController.text = customer.billAmount;
       _depositController.text =
           data['deposit']?.toString() ??
@@ -839,6 +865,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
       _paidAmountController.text = data['paidAmount']?.toString() ?? '';
       _selectedPaymentMode = data['paymentMode'] ?? 'Cash';
       _hasExtraHelmet = data['hasExtraHelmet'] ?? false;
+      _selectedHelmetOption = _hasExtraHelmet ? 2 : 1;
       _hasMobileHolder = data['hasMobileHolder'] ?? false;
       _calculateBillAmount();
 
@@ -1006,7 +1033,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     _cameraController?.dispose();
     _customerNameSearchDebounce?.cancel();
     _daysController.removeListener(_calculateBillAmount);
-    _rateController.removeListener(_calculateBillAmount);
     _phoneController.removeListener(_onPhoneChanged);
 
     _custCodeController.dispose();
@@ -1024,7 +1050,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     _vehicleController.dispose();
     _vehicleNumberController.dispose();
     _daysController.dispose();
-    _rateController.dispose();
     _billAmountController.dispose();
     _depositController.dispose();
     _referenceIdController.dispose();
@@ -1827,6 +1852,12 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         children: [
           _buildSectionHeader('From City'),
           _buildTextField(_cityController, 'City'),
+          const SizedBox(height: 4),
+          _buildTextField(
+            _stayingAtController,
+            'Stay',
+            icon: Icons.hotel_outlined,
+          ),
           _buildSectionHeader('Select Vehicle'),
           _buildVehicleEntrySection(),
           _buildSectionHeader('Date & Time'),
@@ -1834,7 +1865,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
             children: [
               Expanded(
                 child: _buildDateTimePicker(
-                  'Pickup Date & Time',
+                  'Pickup',
                   _vehicleGivenDate,
                   _vehicleGivenTime,
                   (date, time) {
@@ -1849,14 +1880,13 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: _buildDateTimePicker(
-                  'Return Date & Time',
+                  'Return',
                   _vehicleReturnDate,
                   _vehicleReturnTime,
                   (date, time) {
                     setState(() {
                       _vehicleReturnDate = date;
                       _vehicleReturnTime = time;
-                      _calculateDaysFromReturnDate();
                     });
                   },
                   icon: Icons.calendar_month_outlined,
@@ -1940,6 +1970,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
             keyboardType: TextInputType.number,
           ),
           _buildReadOnlyField('Bill Amount', _billAmountController),
+          _buildOverpaidSummary(),
           _buildPaymentModeDropdown(),
           if ((_selectedQRCodeImageUrl ?? '').isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -1947,6 +1978,37 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           ],
         ],
       ),
+    );
+  }
+
+  // Live "Overpaid" label shown below the Bill / Paid summary in the
+  // New Booking review step. Hidden when paid <= total.
+  Widget _buildOverpaidSummary() {
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        _billAmountController,
+        _paidAmountController,
+      ]),
+      builder: (context, _) {
+        final bill = double.tryParse(_billAmountController.text.trim()) ?? 0;
+        final paid = double.tryParse(_paidAmountController.text.trim()) ?? 0;
+        final overpaid = paid - bill;
+        if (overpaid <= 0) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 6, bottom: 6),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Overpaid: ₹${overpaid.toStringAsFixed(0)}',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: Colors.green,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -2079,6 +2141,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     List<TextInputFormatter>? inputFormatters,
     bool required = false,
     IconData? icon,
+    String? Function(String?)? validator,
   }) {
     _registerFocusNode(controller, _currentStep);
     return Padding(
@@ -2094,10 +2157,11 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           prefixIcon: icon == null ? null : Icon(icon),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
-        validator: required
-            ? (v) =>
-                  (v == null || v.trim().isEmpty) ? '$label is required' : null
-            : null,
+        validator: validator ??
+            (required
+                ? (v) =>
+                    (v == null || v.trim().isEmpty) ? '$label is required' : null
+                : null),
       ),
     );
   }
@@ -2130,7 +2194,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
     final vehicleNumber = _vehicleEntryNoController.text.trim();
     final fetchedVehicleNumber = _vehicleNumberController.text.trim();
     final vehicleName = _vehicleEntryNameController.text.trim();
-    final rate = _rateController.text.trim();
     final hasVehicle = vehicleNumber.isNotEmpty || vehicleName.isNotEmpty;
 
     return Column(
@@ -2200,10 +2263,10 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
                               color: hasVehicle ? Colors.black54 : Colors.grey,
                             ),
                           ),
-                          if (rate.isNotEmpty) ...[
+                          if (_vehicleDailyRate > 0) ...[
                             const SizedBox(height: 4),
                             Text(
-                              '₹$rate / day',
+                              '₹$_vehicleDailyRate / day',
                               style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w700,
@@ -2218,10 +2281,15 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
                 ),
                 const SizedBox(height: 14),
                 _buildTextField(
-                  _rateController,
-                  'Rate/Day',
+                  _daysController,
+                  'Days',
                   keyboardType: TextInputType.number,
-                  icon: Icons.currency_rupee,
+                  icon: Icons.numbers_outlined,
+                  required: true,
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty || double.tryParse(v) == null || double.tryParse(v)! <= 0)
+                          ? 'Please enter days'
+                          : null,
                 ),
               ],
             ),
@@ -2241,23 +2309,19 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                 TextFormField(
-                   controller: _vehicleEntryNoController,
-                   autofocus: true,
-                   decoration: InputDecoration(
-                     labelText: 'No',
-                     border: OutlineInputBorder(
-                       borderRadius: BorderRadius.circular(12),
-                     ),
-                   ),
-                   textInputAction: TextInputAction.search,
-                   onFieldSubmitted: (_) async {
-                     setDialogState(() {});
-                     await _searchVehicle();
-                     if (dialogContext.mounted) setDialogState(() {});
-                   },
-                 ),
-              ],
+                  TextFormField(
+                    controller: _vehicleEntryNoController,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: 'No',
+                      hintText: 'Enter vehicle number',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    textInputAction: TextInputAction.done,
+                  ),
+               ],
             ),
             actions: [
               TextButton(
@@ -2268,17 +2332,20 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
                 onPressed: _isSearchingVehicle
                     ? null
                     : () async {
-                        setDialogState(() {});
-                        await _searchVehicle();
-                        final navigator = Navigator.of(dialogContext);
-                        if (mounted) setState(() {});
-                        if (navigator.canPop()) navigator.pop();
+                        final found = await _searchVehicle();
+                        if (found && dialogContext.mounted) {
+                          if (mounted) setState(() {});
+                          Navigator.pop(dialogContext);
+                        }
                       },
                 child: _isSearchingVehicle
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : const Text('OK'),
               ),
@@ -2444,28 +2511,28 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         Row(
           children: [
             Expanded(
-              child: _buildAddOnCard(
-                icon: Icons.sports_motorsports_outlined,
-                label: '1 Helmet',
-                selected: !_hasExtraHelmet,
-                onTap: () {
-                  setState(() {
-                    _hasExtraHelmet = false;
-                    _calculateBillAmount();
-                  });
-                },
+              child: _buildHelmetOption(Icons.close, 0),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _buildHelmetOption(Icons.sports_motorsports, 1),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _buildHelmetOption(
+                Icons.sports_motorsports,
+                2,
+                doubleIcon: true,
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: _buildAddOnCard(
-                icon: Icons.sports_motorsports_outlined,
-                label: '2 Helmets',
-                charge: '+ ₹50',
-                selected: _hasExtraHelmet,
+              child: _buildIconButton(
+                icon: Icons.phone_android_outlined,
+                selected: _hasMobileHolder,
                 onTap: () {
                   setState(() {
-                    _hasExtraHelmet = true;
+                    _hasMobileHolder = !_hasMobileHolder;
                     _calculateBillAmount();
                   });
                 },
@@ -2474,19 +2541,92 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           ],
         ),
         const SizedBox(height: 10),
-        _buildAddOnCard(
-          icon: Icons.phone_android_outlined,
-          label: 'Mobile Holder',
-          charge: '+ ₹30',
-          selected: _hasMobileHolder,
-          onTap: () {
-            setState(() {
-              _hasMobileHolder = !_hasMobileHolder;
-              _calculateBillAmount();
-            });
-          },
-        ),
       ],
+    );
+  }
+
+
+  Widget _buildIconButton({
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: selected ? Colors.black : Colors.white,
+          border: Border.all(
+            color: selected ? Colors.black : const Color(0xFFE2E2E2),
+            width: selected ? 1.5 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Center(
+          child: Icon(
+            icon,
+            size: 25,
+            color: selected ? Colors.white : AppColors.ink,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHelmetOption(
+    IconData icon,
+    int value, {
+    bool doubleIcon = false,
+  }) {
+    final selected = _selectedHelmetOption == value;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedHelmetOption = value;
+          _hasExtraHelmet = value == 2;
+          _calculateBillAmount();
+        });
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: selected ? Colors.black : Colors.white,
+          border: Border.all(
+            color: selected ? Colors.black : const Color(0xFFE2E2E2),
+            width: selected ? 1.5 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Center(
+          child: doubleIcon
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      icon,
+                      size: 20,
+                      color: selected ? Colors.white : AppColors.ink,
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      icon,
+                      size: 20,
+                      color: selected ? Colors.white : AppColors.ink,
+                    ),
+                  ],
+                )
+              : Icon(
+                  icon,
+                  size: 25,
+                  color: selected ? Colors.white : AppColors.ink,
+                ),
+        ),
+      ),
     );
   }
 
@@ -2593,10 +2733,18 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               if (_currentStep > 0)
                 TextButton(
                   onPressed: _previousStep,
-                  child: const Text(
-                    '<- Back',
-                    style: TextStyle(color: AppColors.muted),
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
+                  child: const Text('<- Back'),
                 ),
               const Spacer(),
               ElevatedButton(
@@ -2713,7 +2861,7 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
         sDate: _dateController.text,
         returnDate: vehicleHandover.vehicleReturnDate,
         days: _daysController.text.trim(),
-        rate: _rateController.text.trim(),
+        rate: _vehicleDailyRate.toStringAsFixed(0),
         billAmount: _billAmountController.text.trim(),
         smsPhone: _phoneController.text.trim(),
         aadharNo: _aadharController.text.trim(),

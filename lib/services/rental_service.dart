@@ -151,39 +151,56 @@ class RentalService {
   /// The search is case-insensitive by querying an uppercase version of the number.
   /// It's recommended to store a normalized (e.g., uppercase, no spaces) version
   /// of the vehicle number in Firestore to make queries reliable.
- static Future<DocumentSnapshot<Map<String, dynamic>>?> findVehicleByNumber(
-  String inputNumber,
-) async {
-  final query = inputNumber.trim();
-  if (query.isEmpty) return null;
-
-  final collection = FirebaseFirestore.instance.collection('vehicles');
-
-  // ૧. માત્ર 'No.' (no) ફીલ્ડ સાથે જ String મેચ કરશે
-  var snapshot = await collection
-      .where('no', isEqualTo: query)
-      .limit(1)
-      .get();
-
-  if (snapshot.docs.isNotEmpty) {
-    return snapshot.docs.first;
+  static String? _extractLeadingNumber(String input) {
+    final match = RegExp(r'^\d+').firstMatch(input);
+    return match?.group(0);
   }
 
-  // ૨. જો ડેટાબેઝમાં 'no' Integer તરીકે સ્ટોર થયેલ હોય
-  final intValue = int.tryParse(query);
-  if (intValue != null) {
-    snapshot = await collection
-        .where('no', isEqualTo: intValue)
+  static Future<DocumentSnapshot<Map<String, dynamic>>?> findVehicleByNumber(
+    String inputNumber,
+  ) async {
+    final query = inputNumber.trim();
+    if (query.isEmpty) return null;
+
+    final collection = FirebaseFirestore.instance.collection('vehicles');
+
+    // ૧. માત્ર 'No.' (no) ફીલ્ડ સાથે જ String મેચ કરશે
+    var snapshot = await collection
+        .where('no', isEqualTo: query)
         .limit(1)
         .get();
 
     if (snapshot.docs.isNotEmpty) {
       return snapshot.docs.first;
     }
-  }
 
-  return null;
-}
+    // ૨. જો ડેટાબેઝમાં 'no' Integer તરીકે સ્ટોર થયેલ હોય
+    final intValue = int.tryParse(query);
+    if (intValue != null) {
+      snapshot = await collection
+          .where('no', isEqualTo: intValue)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        return snapshot.docs.first;
+      }
+    }
+
+    // ૩. હવે લીધેલી 'no' માં નંબર + નામ નાખવામાં આવેલ હોય (e.g. "5.ACCESS 125")
+    //     Input ની લીધેલી નંબર સાથે મેલ મળવા માટે leading number extract કરીને
+    //     client-side filtering કરો
+    final allDocs = await collection.get();
+    for (final doc in allDocs.docs) {
+      final docNo = doc.data()['no']?.toString() ?? '';
+      final leadingNo = _extractLeadingNumber(docNo);
+      if (leadingNo != null && leadingNo == query) {
+        return doc;
+      }
+    }
+
+    return null;
+  }
 
   static Future<void> updateVehicleAvailability({
     required String vehicleId,

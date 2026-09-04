@@ -42,9 +42,18 @@ class VehicleManagementScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final vehicle = vehicles[index];
               final data = vehicle.data() as Map<String, dynamic>;
-              final name = data['name'] ?? 'N/A';
               final no = data['no'] ?? '';
+              final name = data['name'] ?? '';
+              final number = data['number'] ?? '';
               final isAvailable = data['available'] as bool? ?? false;
+
+              String displayText = no;
+              if (name.isNotEmpty && !no.contains(name)) {
+                displayText = '$no $name';
+              }
+              if (number.isNotEmpty && !displayText.contains(number)) {
+                displayText = '$displayText ($number)';
+              }
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -65,18 +74,14 @@ class VehicleManagementScreen extends StatelessWidget {
                       color: isAvailable ? AppColors.mint : AppColors.ember,
                     ),
                   ),
-                   title: Text(
-                     'No: $no',
-                     style: const TextStyle(fontSize: 15),
-                   ),
-                   subtitle: Text(
-                     name,
-                     style: const TextStyle(
-                       fontSize: 17,
-                       fontWeight: FontWeight.bold,
-                       color: Colors.black87,
-                     ),
-                   ),
+                  title: Text(
+                    'No: $displayText',
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [

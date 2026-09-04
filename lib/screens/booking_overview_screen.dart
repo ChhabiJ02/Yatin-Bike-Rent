@@ -163,6 +163,49 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
     );
   }
 
+  // Renders helmet count as icon(s) only (no text).
+  Widget _detailHelmet({required int helmetCount}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.sports_motorsports_outlined,
+            size: 20,
+            color: AppColors.ink,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Helmet',
+                  style: TextStyle(fontSize: 11, color: AppColors.ink),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (int i = 0; i < helmetCount; i++) ...[
+                      const Icon(
+                        Icons.sports_motorsports,
+                        size: 22,
+                        color: AppColors.ink,
+                      ),
+                      if (i < helmetCount - 1) const SizedBox(width: 6),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _editSection(
     String title,
     Map<String, String> values,
@@ -268,15 +311,31 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
     final cityController = TextEditingController(
       text: (_travel['city'] ?? _data['city'] ?? '').toString(),
     );
+    final stayController = TextEditingController(
+      text: (_travel['stayingAt'] ?? _travel['hotelName'] ?? '').toString(),
+    );
     final locationController = TextEditingController(
       text: (_handover['vehiclePickupLocation'] ?? '').toString(),
     );
-    DateTime? pickupDate = _parseBookingDate(_handover['vehicleGivenDate']);
-    TimeOfDay? pickupTime = _parseBookingTime(_handover['vehicleGivenTime']);
-    DateTime? returnDate = _parseBookingDate(
-      _handover['vehicleReturnDate'] ?? widget.customer.returnDate,
+    // Fall back to the customer-level sDate / returnDate when the
+    // handover map does not contain its own date (older records).
+    final pickupDateRaw = (_handover['vehicleGivenDate'] ?? '').toString();
+    final pickupTimeRaw = (_handover['vehicleGivenTime'] ?? '').toString();
+    final returnDateRaw = (_handover['vehicleReturnDate'] ?? widget.customer.returnDate)
+        .toString();
+    final returnTimeRaw = (_handover['vehicleReturnTime'] ?? '').toString();
+    final customerSDate = widget.customer.sDate;
+
+    DateTime? pickupDate = _parseBookingDate(
+      pickupDateRaw.isNotEmpty ? pickupDateRaw : customerSDate,
     );
-    TimeOfDay? returnTime = _parseBookingTime(_handover['vehicleReturnTime']);
+    TimeOfDay? pickupTime = _parseBookingTime(
+      pickupTimeRaw.isNotEmpty
+          ? pickupTimeRaw
+          : (pickupDateRaw.isNotEmpty ? null : customerSDate),
+    );
+    DateTime? returnDate = _parseBookingDate(returnDateRaw);
+    TimeOfDay? returnTime = _parseBookingTime(returnTimeRaw);
 
     Future<void> pickDateTime({
       required bool isReturn,
@@ -325,8 +384,17 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                   decoration: const InputDecoration(labelText: 'From City'),
                 ),
                 const SizedBox(height: 12),
+                TextField(
+                  controller: stayController,
+                  decoration: const InputDecoration(
+                    labelText: 'Stay',
+                    hintText: 'Hotel name / Stay location',
+                    prefixIcon: Icon(Icons.hotel_outlined),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 _dateTimeEditField(
-                  label: 'Pickup Date & Time',
+                  label: 'Pickup',
                   value: dateTimeText(pickupDate, pickupTime),
                   onTap: () => pickDateTime(isReturn: false, refresh: refresh),
                 ),
@@ -339,7 +407,7 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                 ),
                 const SizedBox(height: 12),
                 _dateTimeEditField(
-                  label: 'Return Date & Time',
+                  label: 'Return',
                   value: dateTimeText(returnDate, returnTime),
                   onTap: () => pickDateTime(isReturn: true, refresh: refresh),
                 ),
@@ -368,6 +436,8 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                     returnTime?.format(context) ?? '';
                 final travel = Map<String, dynamic>.from(_travel);
                 travel['city'] = cityController.text.trim();
+                travel['stayingAt'] = stayController.text.trim();
+                travel['hotelName'] = stayController.text.trim();
                 await _updateFirestore({
                   'vehicleHandover': handover,
                   'travelDetails': travel,
@@ -390,6 +460,7 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
       ),
     );
     cityController.dispose();
+    stayController.dispose();
     locationController.dispose();
   }
 
@@ -399,103 +470,220 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
           .toString(),
     );
     final rateController = TextEditingController(text: _rate);
-    var hasExtraHelmet = _hasExtraHelmet;
+    final daysController = TextEditingController(text: _days);
+    // Helmet count: 0 = None, 1 = 1 Helmet, 2 = 2 Helmets
+    int helmetCount = _hasExtraHelmet ? 2 : 1;
+    bool hasExtraHelmet() => helmetCount == 2;
+
+    // Live preview values used inside the dialog
+    double liveBill = _calculateTotal(_days, _rate, hasExtraHelmet());
+    double liveDue() => (liveBill - (double.tryParse(_paid) ?? 0))
+        .clamp(0, double.infinity)
+        .toDouble();
+
+    void recompute() {
+      liveBill = _calculateTotal(
+        daysController.text.trim(),
+        rateController.text.trim(),
+        hasExtraHelmet(),
+      );
+    }
+
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, refresh) => AlertDialog(
-          title: const Text('Edit Rental Details'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: startController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Start KM'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: rateController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Rate / Day'),
-              ),
-              const SizedBox(height: 14),
-              Row(
+        builder: (dialogContext, refresh) {
+          // Listen to changes in text fields so total/due update on every keystroke.
+          void onAnyChanged() {
+            recompute();
+            refresh(() {});
+          }
+
+          return AlertDialog(
+            title: const Text('Edit Rental Details'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: _helmetOption(
-                      '1 Helmet',
-                      Icons.sports_motorsports_outlined,
-                      !hasExtraHelmet,
-                      () => refresh(() => hasExtraHelmet = false),
+                  TextField(
+                    controller: startController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Start KM'),
+                    onChanged: (_) => onAnyChanged(),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: daysController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: 'Days'),
+                          onChanged: (_) => onAnyChanged(),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: rateController,
+                          keyboardType: TextInputType.number,
+                          decoration:
+                              const InputDecoration(labelText: 'Rate / Day'),
+                          onChanged: (_) => onAnyChanged(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Helmet',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.black54,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _helmetOption(
-                      '2 Helmets',
-                      Icons.sports_motorsports_outlined,
-                      hasExtraHelmet,
-                      () => refresh(() => hasExtraHelmet = true),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _helmetIconOption(
+                          Icons.close,
+                          helmetCount == 0,
+                          () {
+                            helmetCount = 0;
+                            onAnyChanged();
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _helmetIconOption(
+                          Icons.sports_motorsports_outlined,
+                          helmetCount == 1,
+                          () {
+                            helmetCount = 1;
+                            onAnyChanged();
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _helmetIconOption(
+                          Icons.sports_motorsports_outlined,
+                          helmetCount == 2,
+                          () {
+                            helmetCount = 2;
+                            onAnyChanged();
+                          },
+                          doubleIcon: true,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF6F6F6),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _amount('Total', '₹${liveBill.toStringAsFixed(0)}'),
+                        _amount(
+                          'Due',
+                          '₹${liveDue().toStringAsFixed(0)}',
+                          danger: liveDue() > 0,
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  final transport = Map<String, dynamic>.from(_transport);
+                  transport['startingKm'] = startController.text.trim();
+                  final newRate = rateController.text.trim();
+                  final newDays = daysController.text.trim();
+                  final newBill = _calculateTotal(
+                    newDays,
+                    newRate,
+                    hasExtraHelmet(),
+                  );
+                  await _updateFirestore({
+                    'transportation': transport,
+                    'rate': newRate,
+                    'days': newDays,
+                    'billAmount': newBill.toString(),
+                    'helmetCount': helmetCount,
+                    'hasExtraHelmet': hasExtraHelmet(),
+                    'extraHelmetCharge': hasExtraHelmet() ? 50.0 : 0.0,
+                  });
+                  if (!mounted) return;
+                  setState(() {
+                    _transport = transport;
+                    _rate = newRate;
+                    _days = newDays;
+                    _hasExtraHelmet = hasExtraHelmet();
+                    _bill = newBill;
+                  });
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                },
+                child: const Text('Save'),
+              ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final transport = Map<String, dynamic>.from(_transport);
-                transport['startingKm'] = startController.text.trim();
-                await _updateFirestore({
-                  'transportation': transport,
-                  'rate': rateController.text.trim(),
-                  'billAmount': _calculateTotal(
-                    _days,
-                    rateController.text.trim(),
-                    hasExtraHelmet,
-                  ).toString(),
-                  'hasExtraHelmet': hasExtraHelmet,
-                  'extraHelmetCharge': hasExtraHelmet ? 50.0 : 0.0,
-                });
-                if (!mounted) return;
-                setState(() {
-                  _transport = transport;
-                  _rate = rateController.text.trim();
-                  _hasExtraHelmet = hasExtraHelmet;
-                  _bill = _calculateTotal(_days, _rate, _hasExtraHelmet);
-                });
-                if (dialogContext.mounted) Navigator.pop(dialogContext);
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
     startController.dispose();
     rateController.dispose();
+    daysController.dispose();
   }
 
   DateTime? _parseBookingDate(Object? value) {
-    final parts = value?.toString().split(' ')[0].split('-') ?? [];
+    if (value == null) return null;
+    final raw = value.toString().trim();
+    if (raw.isEmpty) return null;
+
+    // Stored format can be either "dd-MM-yyyy" or "dd-MM-yyyy HH:mm:ss".
+    final datePart = raw.split(' ').first;
+    final parts = datePart.split('-');
     if (parts.length != 3) return null;
-    return DateTime.tryParse('${parts[2]}-${parts[1]}-${parts[0]}');
+
+    // Normalise each part to handle unpadded day/month.
+    String pad(String s) => s.length == 1 ? '0$s' : s;
+    final day = pad(parts[0]);
+    final month = pad(parts[1]);
+    final yearRaw = parts[2];
+    // Year may include time suffix in some legacy data ("2026 10:30:00").
+    final year = yearRaw.split(' ').first.padLeft(4, '0');
+    return DateTime.tryParse('$year-$month-$day');
   }
 
   TimeOfDay? _parseBookingTime(Object? value) {
-    final parts = value?.toString().split(':') ?? [];
+    if (value == null) return null;
+    final raw = value.toString().trim();
+    if (raw.isEmpty) return null;
+    final parts = raw.split(':');
     if (parts.length < 2) return null;
     final hour = int.tryParse(parts[0]);
     final minute = int.tryParse(parts[1]);
-    return hour == null || minute == null
-        ? null
-        : TimeOfDay(hour: hour, minute: minute);
+    if (hour == null || minute == null) return null;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return TimeOfDay(hour: hour, minute: minute);
   }
 
   double _calculateTotal(String days, String rate, bool extraHelmet) {
@@ -577,68 +765,192 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
     );
   }
 
-  Widget _helmetOption(
-    String label,
+  Widget _helmetIconOption(
     IconData icon,
     bool selected,
-    VoidCallback onTap,
-  ) {
+    VoidCallback onTap, {
+    bool doubleIcon = false,
+  }) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
       child: Container(
-        height: 72,
+        height: 64,
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
+          color: selected ? Colors.black : Colors.white,
           border: Border.all(
             color: selected ? Colors.black : const Color(0xFFE0E0E0),
             width: selected ? 1.5 : 1,
           ),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Row(
-          children: [
-            Icon(
-              selected ? Icons.check_circle : Icons.circle_outlined,
-              size: 20,
-            ),
-            const SizedBox(width: 5),
-            Icon(icon, size: 26),
-            const SizedBox(width: 5),
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+        child: Center(
+          child: doubleIcon
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      icon,
+                      size: 22,
+                      color: selected ? Colors.white : AppColors.ink,
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      icon,
+                      size: 22,
+                      color: selected ? Colors.white : AppColors.ink,
+                    ),
+                  ],
+                )
+              : Icon(
+                  icon,
+                  size: 26,
+                  color: selected ? Colors.white : AppColors.ink,
                 ),
-              ),
-            ),
-          ],
         ),
       ),
     );
   }
 
   Future<void> _editPayment() async {
-    await _editSection(
-      'Payment',
-      {
-        'Paid Amount': _paid,
-        'Reference ID': (_data['referenceId'] ?? '').toString(),
-      },
-      (values) async {
-        await _updateFirestore({
-          'paidAmount': values['Paid Amount'],
-          'referenceId': values['Reference ID'],
-        });
-        setState(() {
-          _paid = values['Paid Amount']!;
-          _data['paidAmount'] = _paid;
-          _data['referenceId'] = values['Reference ID'];
-        });
-      },
+    final totalController = TextEditingController(
+      text: _bill.toStringAsFixed(0),
     );
+    final paidController = TextEditingController(text: _paid);
+    final dueController = TextEditingController(text: '0');
+    final overpaidController = TextEditingController(text: '0');
+    final referenceIdController = TextEditingController(
+      text: (_data['referenceId'] ?? '').toString(),
+    );
+
+    void recompute() {
+      final total = double.tryParse(totalController.text.trim()) ?? 0;
+      final paid = double.tryParse(paidController.text.trim()) ?? 0;
+      final diff = paid - total;
+      if (diff >= 0) {
+        // Paid exceeds total -> overpaid, no due.
+        dueController.text = '0';
+        overpaidController.text = diff.toStringAsFixed(0);
+      } else {
+        dueController.text = (-diff).toStringAsFixed(0);
+        overpaidController.text = '0';
+      }
+    }
+
+    // Initialise derived values from the current saved paid amount.
+    recompute();
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setLocalState) {
+          return AlertDialog(
+            title: const Text('Edit Payment'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: totalController,
+                    readOnly: true,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Total Amount',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: paidController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Paid Amount',
+                    ),
+                    onChanged: (_) {
+                      recompute();
+                      setLocalState(() {});
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: dueController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Due Amount',
+                    ),
+                    onChanged: (_) {
+                      // Manual edit: treat Due as an offset against paid.
+                      final due =
+                          double.tryParse(dueController.text.trim()) ?? 0;
+                      final total =
+                          double.tryParse(totalController.text.trim()) ?? 0;
+                      paidController.text = (total + due).toStringAsFixed(0);
+                      recompute();
+                      setLocalState(() {});
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: overpaidController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Overpaid Amount',
+                    ),
+                    onChanged: (_) {
+                      // Manual edit: treat Overpaid as an offset against paid.
+                      final overpaid = double.tryParse(
+                            overpaidController.text.trim(),
+                          ) ??
+                          0;
+                      final total =
+                          double.tryParse(totalController.text.trim()) ?? 0;
+                      paidController.text =
+                          (total + overpaid).toStringAsFixed(0);
+                      recompute();
+                      setLocalState(() {});
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: referenceIdController,
+                    decoration: const InputDecoration(
+                      labelText: 'Reference ID',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  await _updateFirestore({
+                    'paidAmount': paidController.text.trim(),
+                    'referenceId': referenceIdController.text.trim(),
+                  });
+                  if (!mounted) return;
+                  setState(() {
+                    _paid = paidController.text.trim();
+                    _data['paidAmount'] = _paid;
+                    _data['referenceId'] = referenceIdController.text.trim();
+                  });
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    totalController.dispose();
+    paidController.dispose();
+    dueController.dispose();
+    overpaidController.dispose();
+    referenceIdController.dispose();
   }
 
   @override
@@ -646,13 +958,17 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
     final handover = _handover;
     final transportation = _transport;
     final status = (handover['returnStatus'] ?? 'Pending').toString();
-    final returned = status.toLowerCase() == 'returned';
+    final normalizedStatus = status.toLowerCase().trim();
+    final returned =
+        normalizedStatus == 'returned' || normalizedStatus == 'completed';
     final paid = _paid;
     final bill = _bill;
     final pending = (bill - (double.tryParse(paid.toString()) ?? 0)).clamp(
       0,
       double.infinity,
     );
+    final overpaid = (double.tryParse(paid.toString()) ?? 0) - bill;
+    final hasOverpaid = overpaid > 0;
 
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
@@ -846,13 +1162,21 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
               ]),
               _detailRow([
                 _detail(
+                  Icons.hotel_outlined,
+                  'Stay',
+                  _value(_travel['stayingAt'] ?? _travel['hotelName']),
+                ),
+                const SizedBox.shrink(),
+              ]),
+              _detailRow([
+                _detail(
                   Icons.calendar_month_outlined,
-                  'Pickup Date & Time',
+                  'Pickup',
                   '${_value(handover['vehicleGivenDate'])} ${_value(handover['vehicleGivenTime'])}',
                 ),
                 _detail(
                   Icons.calendar_month_outlined,
-                  'Return Date & Time',
+                  'Return',
                   '${_value(handover['vehicleReturnDate'] ?? widget.customer.returnDate)} ${_value(handover['vehicleReturnTime'])}',
                 ),
               ]),
@@ -874,10 +1198,8 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                 ),
               ]),
               _detailRow([
-                _detail(
-                  Icons.sports_motorsports_outlined,
-                  'Helmet',
-                  _hasExtraHelmet ? '2 Helmets' : '1 Helmet',
+                _detailHelmet(
+                  helmetCount: _hasExtraHelmet ? 2 : 1,
                 ),
                 const SizedBox.shrink(),
               ]),
@@ -888,10 +1210,26 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                 children: [
                   _amount('Total Amount', '₹${bill.toStringAsFixed(0)}'),
                   _amount('Paid Amount', '₹${_value(paid)}'),
-                  _amount(
-                    'Due Amount',
-                    '₹${pending.toStringAsFixed(0)}',
-                    danger: pending > 0,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _amount(
+                        'Due Amount',
+                        '₹${pending.toStringAsFixed(0)}',
+                        danger: pending > 0,
+                      ),
+                      if (hasOverpaid) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'Overpaid: ₹${overpaid.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -899,26 +1237,44 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: widget.onExtend == null
-                        ? null
-                        : () async {
-                            await widget.onExtend!.call();
-                            await _reloadBooking();
-                          },
-                    icon: const Icon(Icons.calendar_month_outlined),
-                    label: const Text('Extend Booking'),
+                  child: Opacity(
+                    opacity: returned ? 0.45 : 1.0,
+                    child: IgnorePointer(
+                      ignoring: returned,
+                      child: OutlinedButton.icon(
+                        onPressed: widget.onExtend == null
+                            ? null
+                            : () async {
+                                await widget.onExtend!.call();
+                                await _reloadBooking();
+                              },
+                        icon: const Icon(Icons.calendar_month_outlined),
+                        label: const Text('Extend Booking'),
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: returned ? null : () => widget.onReturn?.call(),
-                    icon: const Icon(Icons.refresh),
-                    label: Text(returned ? 'Returned' : 'Return Vehicle'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
+                  child: Opacity(
+                    opacity: returned ? 0.45 : 1.0,
+                    child: IgnorePointer(
+                      ignoring: returned,
+                      child: ElevatedButton.icon(
+                        onPressed: returned
+                            ? null
+                            : () => widget.onReturn?.call(),
+                        icon: const Icon(Icons.refresh),
+                        label: Text(
+                          returned ? 'Returned' : 'Return Vehicle',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: returned
+                              ? Colors.grey
+                              : Colors.red,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
                     ),
                   ),
                 ),

@@ -497,8 +497,166 @@ class AdminDashboard extends StatelessWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
+                              builder: (_) =>
+                                  const CustomerBookingsScreen(),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Available Vehicles: total vehicles - active rentals
+                  // An active rental = returnStatus NOT in {'completed', 'returned'}
+                  StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('vehicles')
+                        .snapshots(),
+                    builder: (context, vehiclesSnap) {
+                      return StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('customers')
+                            .snapshots(),
+                        builder: (context, customersSnap) {
+                          if (vehiclesSnap.connectionState ==
+                                  ConnectionState.waiting ||
+                              customersSnap.connectionState ==
+                                  ConnectionState.waiting) {
+                            return _buildOverviewTile(
+                              icon: Icons.two_wheeler_outlined,
+                              title: 'Available Vehicles',
+                              count: '...',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const VehicleManagementScreen(),
+                                  ),
+                                );
+                              },
+                            );
+                          }
+                          if (vehiclesSnap.hasError ||
+                              customersSnap.hasError) {
+                            return _buildOverviewTile(
+                              icon: Icons.error_outline,
+                              title: 'Available Vehicles',
+                              count: '!',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const VehicleManagementScreen(),
+                                  ),
+                                );
+                              },
+                            );
+                          }
+
+                          final totalVehicles =
+                              vehiclesSnap.data?.docs.length ?? 0;
+                          final customers =
+                              customersSnap.data?.docs ?? [];
+                          int activeRentals = 0;
+                          for (final doc in customers) {
+                            final data =
+                                doc.data() as Map<String, dynamic>;
+                            final handover =
+                                data['vehicleHandover']
+                                    as Map<String, dynamic>?;
+                            final rawStatus = (handover?['returnStatus'] ?? '')
+                                .toString()
+                                .trim()
+                                .toLowerCase();
+                            final isActive = rawStatus != 'returned' &&
+                                rawStatus != 'completed';
+                            if (isActive) activeRentals++;
+                          }
+                          final available =
+                              (totalVehicles - activeRentals).clamp(0, 1 << 30);
+
+                          return _buildOverviewTile(
+                            icon: Icons.two_wheeler_outlined,
+                            title: 'Available Vehicles',
+                            count: '$available',
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const VehicleManagementScreen(),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Today's Returns (original block)
+                  StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('customers')
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return _buildOverviewTile(
+                          icon: Icons.exit_to_app_rounded,
+                          title: "Today's Returns",
+                          count: "...",
+                          onTap: () {},
+                        );
+                      }
+                      if (snapshot.hasError) {
+                        return _buildOverviewTile(
+                          icon: Icons.error_outline,
+                          title: "Today's Returns",
+                          count: "!",
+                          onTap: () {},
+                        );
+                      }
+
+                      final docs = snapshot.data?.docs ?? [];
+
+                      final todayReturnsCount = docs.where((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        final handover =
+                            data['vehicleHandover'] as Map<String, dynamic>?;
+
+                        // returnStatus 'Returned' હોવું જોઈએ
+                        final isReturned =
+                            handover?['returnStatus'] == 'Returned';
+
+                        // ૧. અગ્રતા: vehicleReturnDate તારીખ ચકાસો
+                        // ૨. જો તે ખાલી હોય તો document ની સાચી createdAt / sDate ચકાસો
+                        final returnDate = handover?['vehicleReturnDate'];
+                        final fallbackDate =
+                            data['createdAt'] ?? data['sDate'];
+
+                        final isReturnToday = _isToday(
+                          (returnDate != null && returnDate.toString().isNotEmpty)
+                              ? returnDate
+                              : fallbackDate,
+                        );
+
+                        return isReturned && isReturnToday;
+                      }).length;
+
+                      return _buildOverviewTile(
+                        icon: Icons.exit_to_app_rounded,
+                        title: "Today's Returns",
+                        count: "$todayReturnsCount",
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
                               builder: (_) => const CustomerBookingsScreen(
-                                filterType: 'todays_bookings',
+                                filterType: 'todays_returns',
                               ),
                             ),
                           );
@@ -506,70 +664,7 @@ class AdminDashboard extends StatelessWidget {
                       );
                     },
                   ),
-
                   const SizedBox(height: 10),
-
-                  // Today's Returns
-                  StreamBuilder<QuerySnapshot>(
-  stream: FirebaseFirestore.instance.collection('customers').snapshots(),
-  builder: (context, snapshot) {
-    if (snapshot.connectionState == ConnectionState.waiting) {
-      return _buildOverviewTile(
-        icon: Icons.exit_to_app_rounded,
-        title: "Today's Returns",
-        count: "...",
-        onTap: () {},
-      );
-    }
-    if (snapshot.hasError) {
-      return _buildOverviewTile(
-        icon: Icons.error_outline,
-        title: "Today's Returns",
-        count: "!",
-        onTap: () {},
-      );
-    }
-
-    final docs = snapshot.data?.docs ?? [];
-    
-    final todayReturnsCount = docs.where((doc) {
-      final data = doc.data() as Map<String, dynamic>;
-      final handover = data['vehicleHandover'] as Map<String, dynamic>?;
-
-      // returnStatus 'Returned' હોવું જોઈએ 
-      final isReturned = handover?['returnStatus'] == 'Returned';
-
-      // ૧. અગ્રતા: vehicleReturnDate તારીખ ચકાસો
-      // ૨. જો તે ખાલી હોય તો document ની સાચી createdAt / sDate ચકાસો
-      final returnDate = handover?['vehicleReturnDate'];
-      final fallbackDate = data['createdAt'] ?? data['sDate'];
-
-      final isReturnToday = _isToday(
-        (returnDate != null && returnDate.toString().isNotEmpty)
-            ? returnDate
-            : fallbackDate,
-      );
-
-      return isReturned && isReturnToday;
-    }).length;
-
-    return _buildOverviewTile(
-      icon: Icons.exit_to_app_rounded,
-      title: "Today's Returns",
-      count: "$todayReturnsCount",
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const CustomerBookingsScreen(
-              filterType: 'todays_returns',
-            ),
-          ),
-        );
-      },
-    );
-  },
-),
 
                   const SizedBox(height: 20),
 
