@@ -125,7 +125,7 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
     final dropDateTimeController = TextEditingController(
       text: DateFormat('dd-MM-yyyy HH:mm').format(DateTime.now()),
     );
-    final dropLocationController = TextEditingController();
+    final dropLocationController = TextEditingController(text: 'office');
     final endOdometerController = TextEditingController();
     DateTime selectedDate = DateTime.now();
     TimeOfDay selectedTime = TimeOfDay.now();
@@ -472,113 +472,104 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Current Return: ${customer.returnDate.isNotEmpty ? customer.returnDate : "N/A"}',
-                      style: const TextStyle(color: Colors.black54),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        IconButton(
-                          iconSize: 32,
-                          icon: const Icon(
-                            Icons.remove_circle_outline,
-                            color: AppColors.primaryGreen,
-                          ),
-                          onPressed: () {
-                            int currentDays =
-                                int.tryParse(daysController.text) ?? 1;
-                            if (currentDays > 1) {
-                              daysController.text = (currentDays - 1)
-                                  .toString();
-                              setState(() {
-                                extendedDays = currentDays - 1;
-                                additionalCharge =
-                                    extendedDays * perDayRate;
-                                newTotal =
-                                    (double.tryParse(customer.billAmount) ??
-                                            0.0) +
-                                        additionalCharge;
-                              });
-                            }
-                          },
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 70,
-                          child: TextFormField(
-                            controller: daysController,
-                            textAlign: TextAlign.center,
-                            keyboardType: TextInputType.number,
-                            decoration: InputDecoration(
-                              labelText: 'Days',
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 8,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            onChanged: (value) {
-                              final parsed = int.tryParse(value) ?? 0;
-                              setState(() {
-                                extendedDays = parsed;
-                                additionalCharge = extendedDays * perDayRate;
-                                newTotal =
-                                    (double.tryParse(customer.billAmount) ??
-                                            0.0) +
-                                        additionalCharge;
-                              });
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          iconSize: 32,
-                          icon: const Icon(
-                            Icons.add_circle_outline,
-                            color: AppColors.primaryGreen,
-                          ),
-                          onPressed: () {
-                            int currentDays =
-                                int.tryParse(daysController.text) ?? 0;
-                            daysController.text = (currentDays + 1).toString();
-                            setState(() {
-                              extendedDays = currentDays + 1;
-                              additionalCharge = extendedDays * perDayRate;
-                              newTotal =
-                                  (double.tryParse(customer.billAmount) ??
-                                          0.0) +
-                                      additionalCharge;
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Center(
-                      child: Text(
-                        'Additional: ₹${additionalCharge.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.muted,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Center(
-                      child: Text(
-                        'New Total: ₹${newTotal.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primaryGreen,
-                        ),
-                      ),
-                    ),
+                   children: [
+                     Text(
+                       'Current Return: ${customer.returnDate.isNotEmpty ? customer.returnDate : "N/A"} ${(customer.vehicleHandover?['vehicleReturnTime'] ?? '').toString()}',
+                       style: const TextStyle(color: Colors.black54),
+                     ),
+                     const SizedBox(height: 16),
+                     Center(
+                        child: Container(
+                         decoration: BoxDecoration(
+                           border: Border.all(color: AppColors.muted),
+                           borderRadius: BorderRadius.circular(10),
+                         ),
+                         child: Row(
+                           mainAxisSize: MainAxisSize.min,
+                           children: [
+                             IconButton(
+                               iconSize: 28,
+                               icon: const Icon(
+                                 Icons.remove_circle_outline,
+                                 color: AppColors.primaryGreen,
+                               ),
+                               onPressed: () {
+                                 int currentDays =
+                                     int.tryParse(daysController.text) ?? 1;
+                                 if (currentDays > 1) {
+                                   daysController.text = (currentDays - 1)
+                                       .toString();
+                                   setState(() {
+                                     extendedDays = currentDays - 1;
+                                     additionalCharge =
+                                         extendedDays * perDayRate;
+                                     newTotal =
+                                         (double.tryParse(customer.billAmount) ??
+                                                 0.0) +
+                                              additionalCharge;
+                                   });
+                                 }
+                               },
+                             ),
+                             const SizedBox(width: 12),
+                             SizedBox(
+                               width: 50,
+                               child: TextFormField(
+                                 controller: daysController,
+                                 textAlign: TextAlign.center,
+                                 keyboardType: TextInputType.number,
+                                 decoration: const InputDecoration(
+                                   border: InputBorder.none,
+                                 ),
+                                 onChanged: (value) {
+                                   final parsed = int.tryParse(value) ?? 0;
+                                   setState(() {
+                                     extendedDays = parsed;
+                                     additionalCharge = extendedDays * perDayRate;
+                                     newTotal =
+                                         (double.tryParse(customer.billAmount) ??
+                                                 0.0) +
+                                              additionalCharge;
+                                   });
+                                 },
+                               ),
+                             ),
+                             const SizedBox(width: 12),
+                             IconButton(
+                               iconSize: 28,
+                               icon: const Icon(
+                                 Icons.add_circle_outline,
+                                 color: AppColors.primaryGreen,
+                               ),
+                               onPressed: () {
+                                 int currentDays =
+                                     int.tryParse(daysController.text) ?? 0;
+                                 daysController.text = (currentDays + 1).toString();
+                                 setState(() {
+                                   extendedDays = currentDays + 1;
+                                   additionalCharge = extendedDays * perDayRate;
+                                   newTotal =
+                                       (double.tryParse(customer.billAmount) ??
+                                               0.0) +
+                                            additionalCharge;
+                                 });
+                               },
+                             ),
+                           ],
+                         ),
+                       ),
+                     ),
+                     const SizedBox(height: 12),
+                     Center(
+                       child: Text(
+                         'New Total: ₹${newTotal.toStringAsFixed(2)}',
+                         style: const TextStyle(
+                           fontSize: 18,
+                           fontWeight: FontWeight.bold,
+                           color: AppColors.primaryGreen,
+                         ),
+                       ),
+                     ),
                   ],
                 ),
               ),
@@ -740,9 +731,9 @@ class _CustomerBookingsScreenState extends State<CustomerBookingsScreen> {
         Navigator.pop(dialogContext);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Extended return date to $formattedNewDate successfully!',
-            ),
+             content: Text(
+               'Extended return date to $formattedNewDate $formattedNewTime successfully!',
+             ),
             backgroundColor: Colors.green,
           ),
         );
@@ -1526,6 +1517,10 @@ class _CustomerEntryCard extends StatelessWidget {
         transportation['kmStartingNumber'] ??
         handover['kmStartingNumber'] ??
         '-';
+    final endKm =
+        transportation['kmEndingNumber'] ??
+        handover['kmEndingNumber'] ??
+        '-';
     final vehicleNumber =
         (handover['vehicleNumber'] ?? docData['vehicleEntry']?['no'] ?? 'N/A')
             .toString();
@@ -1616,9 +1611,21 @@ class _CustomerEntryCard extends StatelessWidget {
                 children: [
                   const Icon(Icons.speed_outlined, size: 18),
                   const SizedBox(width: 6),
-                  Text(
-                    'Start KM: $startKm km',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Start: $startKm km',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        if (isReturned)
+                          Text(
+                            'End: $endKm km',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                      ],
+                    ),
                   ),
                 ],
               ),

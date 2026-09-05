@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/customer.dart';
+import '../services/rental_service.dart';
 import '../theme/app_theme.dart';
 import 'payment_record_screen.dart';
 
@@ -37,6 +38,8 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
   late String _days;
   double _bill = 0;
   late bool _hasExtraHelmet;
+  late bool _hasMobileHolder;
+  String? _currentVehicleId;
 
   @override
   void initState() {
@@ -56,11 +59,17 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
     _days = widget.customer.days;
     _bill = double.tryParse(widget.customer.billAmount) ?? 0;
     _hasExtraHelmet = widget.customer.hasExtraHelmet;
+    _hasMobileHolder = widget.customer.hasMobileHolder;
     _paid =
         (_data['paidAmount'] ??
                 widget.customer.payment?['paymentAmount'] ??
                 '0')
             .toString();
+    _currentVehicleId = (_data['vehicleId'] ?? _data['vehicleDocId'] ?? '')
+        .toString();
+    if ((_currentVehicleId ?? '').isEmpty) {
+      _currentVehicleId = null;
+    }
   }
 
   String _value(Object? value) {
@@ -270,22 +279,40 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
   }
 
   Future<void> _reloadBooking() async {
-    final snapshot = await FirebaseFirestore.instance
-        .collection('customers')
-        .doc(widget.customer.custCode)
-        .get();
-    if (!mounted || !snapshot.exists) return;
-    final data = snapshot.data() ?? {};
-    setState(() {
-      _data = data;
-      _handover = Map<String, dynamic>.from(data['vehicleHandover'] ?? {});
-      _transport = Map<String, dynamic>.from(data['transportation'] ?? {});
-      _days = (data['days'] ?? _days).toString();
-      _rate = (data['rate'] ?? _rate).toString();
-      _bill =
-          double.tryParse((data['billAmount'] ?? _bill).toString()) ?? _bill;
-      _hasExtraHelmet = data['hasExtraHelmet'] == true;
-    });
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('customers')
+          .doc(widget.customer.custCode)
+          .get();
+      if (!mounted || !snapshot.exists) return;
+      final data = snapshot.data() ?? {};
+      setState(() {
+        _data = data;
+        _handover = Map<String, dynamic>.from(data['vehicleHandover'] ?? {});
+        _transport = Map<String, dynamic>.from(data['transportation'] ?? {});
+        _days = (data['days'] ?? _days).toString();
+        _rate = (data['rate'] ?? _rate).toString();
+        _bill =
+            double.tryParse((data['billAmount'] ?? _bill).toString()) ?? _bill;
+        _hasExtraHelmet = data['hasExtraHelmet'] == true;
+        _hasMobileHolder = data['hasMobileHolder'] == true;
+        _paid =
+            (data['paidAmount'] ??
+                    widget.customer.payment?['paymentAmount'] ??
+                    '0')
+                .toString();
+        _currentVehicleId = (data['vehicleId'] ??
+                data['vehicleDocId'] ??
+                _currentVehicleId ??
+                '')
+            .toString();
+        if ((_currentVehicleId ?? '').isEmpty) {
+          _currentVehicleId = null;
+        }
+      });
+    } catch (e) {
+      // Silently ignore reload errors to avoid breaking refund flow
+    }
   }
 
   Future<void> _editCustomer() async {
@@ -305,6 +332,140 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
         });
       },
     );
+  }
+
+  Future<void> _editVehicle() async {
+    final vehicleNoController = TextEditingController(
+      text: (_handover['vehicleNumber'] ?? '').toString(),
+    );
+    bool isSearching = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          return AlertDialog(
+            title: const Text('Vehicle Details'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: vehicleNoController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'No',
+                    hintText: 'Enter vehicle number',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(12)),
+                    ),
+                  ),
+                  textInputAction: TextInputAction.done,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: isSearching
+                    ? null
+                    : () async {
+                        final vehicleNo = vehicleNoController.text.trim();
+                        if (vehicleNo.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Please enter a vehicle number.'),
+                            ),
+                          );
+                          return;
+                        }
+                        setDialogState(() => isSearching = true);
+                        try {
+                          final vehicleDoc =
+                              await RentalService.findVehicleByNumber(vehicleNo);
+                          if (vehicleDoc != null && vehicleDoc.exists) {
+                            final vehicleData = vehicleDoc.data()!;
+                            final vehicleName = (vehicleData['name'] ??
+                                    vehicleData['vehicleName'] ??
+                                    '')
+                                .toString();
+                            final vehicleNumber = (vehicleData['number'] ??
+                                    vehicleData['no'] ??
+                                    '')
+                                .toString();
+                            final dailyRate = (vehicleData['dailyRate'] ??
+                                    vehicleData['rate'] ??
+                                    0)
+                                .toString();
+                            final vehicleDocId = vehicleDoc.id;
+                            final handover = Map<String, dynamic>.from(_handover);
+                            handover['vehicleNumber'] = vehicleNumber;
+                            handover['vehicleName'] = vehicleName;
+                            final travel = Map<String, dynamic>.from(_travel);
+                            travel['hotelName'] = vehicleName;
+                            await _updateFirestore({
+                              'vehicleHandover': handover,
+                              'travelDetails': travel,
+                              'vehicleId': vehicleDocId,
+                              'vehicleName': vehicleName,
+                              'vehicleNumber': vehicleNumber,
+                              'rate': dailyRate,
+                            });
+                            if (!mounted) return;
+                            setState(() {
+                              _handover = handover;
+                              _travel = travel;
+                              _rate = dailyRate;
+                              _currentVehicleId = vehicleDocId;
+                              _bill = _calculateTotal(
+                                _days,
+                                _rate,
+                                _hasExtraHelmet,
+                              );
+                            });
+                            if (dialogContext.mounted) Navigator.pop(dialogContext);
+                          } else {
+                            if (dialogContext.mounted) {
+                              setDialogState(() => isSearching = false);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Vehicle not found.'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        } catch (e) {
+                          if (dialogContext.mounted) {
+                            setDialogState(() => isSearching = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('An error occurred: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                child: isSearching
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('OK'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   Future<void> _editBooking() async {
@@ -367,7 +528,10 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
       if (date == null) return 'Select date and time';
       final dateText =
           '${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}';
-      return '$dateText ${time?.format(context) ?? ''}'.trim();
+      final timeText = time != null
+          ? '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}'
+          : '';
+      return '$dateText $timeText'.trim();
     }
 
     await showDialog<void>(
@@ -426,14 +590,18 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                     ? ''
                     : '${pickupDate!.day}-${pickupDate!.month}-${pickupDate!.year}';
                 handover['vehicleGivenTime'] =
-                    pickupTime?.format(context) ?? '';
+                    pickupTime != null
+                        ? '${pickupTime!.hour.toString().padLeft(2, '0')}:${pickupTime!.minute.toString().padLeft(2, '0')}'
+                        : '';
                 handover['vehiclePickupLocation'] = locationController.text
                     .trim();
                 handover['vehicleReturnDate'] = returnDate == null
                     ? ''
                     : '${returnDate!.day}-${returnDate!.month}-${returnDate!.year}';
                 handover['vehicleReturnTime'] =
-                    returnTime?.format(context) ?? '';
+                    returnTime != null
+                        ? '${returnTime!.hour.toString().padLeft(2, '0')}:${returnTime!.minute.toString().padLeft(2, '0')}'
+                        : '';
                 final travel = Map<String, dynamic>.from(_travel);
                 travel['city'] = cityController.text.trim();
                 travel['stayingAt'] = stayController.text.trim();
@@ -535,18 +703,6 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Helmet',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.black54,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
@@ -580,12 +736,26 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                             onAnyChanged();
                           },
                           doubleIcon: true,
+                         ),
+                        ),
+                      const VerticalDivider(width: 32),
+                      SizedBox(
+                        width: 100,
+                        child: _helmetIconOption(
+                          Icons.phone_android,
+                          _hasMobileHolder,
+                          () {
+                            setState(() {
+                              _hasMobileHolder = !_hasMobileHolder;
+                              onAnyChanged();
+                            });
+                          },
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  Container(
+                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF6F6F6),
@@ -630,6 +800,8 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                     'helmetCount': helmetCount,
                     'hasExtraHelmet': hasExtraHelmet(),
                     'extraHelmetCharge': hasExtraHelmet() ? 50.0 : 0.0,
+                    'hasMobileHolder': _hasMobileHolder,
+                    'mobileHolderCharge': _hasMobileHolder ? 30.0 : 0.0,
                   });
                   if (!mounted) return;
                   setState(() {
@@ -637,6 +809,7 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                     _rate = newRate;
                     _days = newDays;
                     _hasExtraHelmet = hasExtraHelmet();
+                    _hasMobileHolder = _hasMobileHolder;
                     _bill = newBill;
                   });
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
@@ -691,7 +864,7 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
     final dailyRate = double.tryParse(rate) ?? 0;
     return totalDays * dailyRate +
         (extraHelmet ? 50 : 0) +
-        (widget.customer.hasMobileHolder ? 30 : 0);
+        (_hasMobileHolder ? 30 : 0);
   }
 
   int _totalDaysFor(Map<String, dynamic> handover) {
@@ -953,6 +1126,194 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
     referenceIdController.dispose();
   }
 
+  Future<void> _showRefundDialog() async {
+    final overpaid = (double.tryParse(_paid) ?? 0) - _bill;
+    if (overpaid <= 0) return;
+
+    final controller = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Refund Amount'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Current Overpaid: ₹${overpaid.toStringAsFixed(0)}'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Refund Amount (₹)',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(10)),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final refundAmount = double.tryParse(controller.text.trim()) ?? 0;
+              if (refundAmount <= 0 || refundAmount > overpaid) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Invalid refund amount'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(dialogContext);
+              await _processRefund(refundAmount);
+            },
+            child: const Text('Confirm Refund'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+  }
+
+  Future<void> _processRefund(double refundAmount) async {
+    final currentPaid = double.tryParse(_paid) ?? 0;
+    final newPaid = currentPaid - refundAmount;
+    final currentOverpaid = (currentPaid - _bill).clamp(0.0, double.infinity);
+    final newOverpaid = (currentOverpaid - refundAmount).clamp(0.0, double.infinity);
+    final now = DateTime.now();
+    final refundTransaction = {
+      'type': 'Refunded',
+      'amount': refundAmount.toStringAsFixed(2),
+      'date': '${now.day}-${now.month}-${now.year}',
+      'time': '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    try {
+      await _updateFirestore({
+        'paidAmount': newPaid.toStringAsFixed(0),
+        'overpaidAmount': newOverpaid.toStringAsFixed(0),
+        'paymentHistory': FieldValue.arrayUnion([refundTransaction]),
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Refund failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _paid = newPaid.toStringAsFixed(0);
+      _data['paidAmount'] = _paid;
+      _data['overpaidAmount'] = newOverpaid.toStringAsFixed(0);
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Refund of ₹${refundAmount.toStringAsFixed(0)} processed')),
+    );
+
+    try {
+      await _reloadBooking();
+    } catch (_) {
+      // ignore reload errors after successful refund
+    }
+  }
+
+  Future<void> _showPaymentHistoryDialog() async {
+    final history = await _loadPaymentHistory();
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Payment History'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: history.isEmpty
+              ? const Text('No transactions found')
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: history.length,
+                  separatorBuilder: (_, __) => const Divider(),
+                  itemBuilder: (context, index) {
+                    final tx = history[index];
+                    final type = tx['type'] ?? 'Paid';
+                    final amount = tx['amount'] ?? '0';
+                    final date = tx['date'] ?? '';
+                    final time = tx['time'] ?? '';
+                    final color = type == 'Refunded'
+                        ? Colors.red
+                        : type == 'Extended'
+                            ? Colors.orange
+                            : Colors.green;
+                     return ListTile(
+                       leading: Icon(Icons.payments, color: color),
+                       title: Text(
+                         '₹$amount',
+                         style: TextStyle(
+                           fontWeight: FontWeight.w800,
+                           color: color,
+                         ),
+                       ),
+                       subtitle: Text(
+                         '$type\n$date $time\n'
+                         'Mode: ${tx['paymentMethod'] ?? tx['bankName'] ?? '-'}\n'
+                         'Ref ID: ${tx['refId'] ?? '-'}\n'
+                         'Txn ID: ${tx['transactionId'] ?? '-'}'
+                         '${(tx['notes'] ?? '').toString().isNotEmpty ? '\nNotes: ${tx['notes']}' : ''}',
+                       ),
+                       trailing: Text(
+                         type,
+                         style: TextStyle(
+                           fontSize: 12,
+                           fontWeight: FontWeight.w600,
+                           color: color,
+                         ),
+                       ),
+                     );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _loadPaymentHistory() async {
+    final doc = await FirebaseFirestore.instance
+        .collection('customers')
+        .doc(widget.customer.custCode)
+        .get();
+    final data = doc.data() ?? {};
+    final history = List<Map<String, dynamic>>.from(data['paymentHistory'] ?? []);
+
+    final initialPayment = {
+      'type': 'Paid',
+      'amount': widget.customer.billAmount,
+      'date': widget.customer.sDate.isNotEmpty ? widget.customer.sDate.split(' ')[0] : '',
+      'time': widget.customer.sDate.isNotEmpty && widget.customer.sDate.contains(' ')
+          ? widget.customer.sDate.split(' ')[1]
+          : '',
+    };
+    history.insert(0, initialPayment);
+
+    return history;
+  }
+
   @override
   Widget build(BuildContext context) {
     final handover = _handover;
@@ -1000,11 +1361,8 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                         ),
                       ),
                     );
-                    if (paid is String && mounted) {
-                      setState(() {
-                        _paid = paid;
-                        _data['paidAmount'] = paid;
-                      });
+                    if (paid != null && mounted) {
+                      await _reloadBooking();
                     }
                   },
                   customBorder: const CircleBorder(),
@@ -1102,20 +1460,20 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         child: Column(
           children: [
-            _section('Vehicle', [
+             _section('Vehicle', [
               Row(
                 children: [
                   const Icon(Icons.two_wheeler_outlined, size: 30),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _value(widget.customer.vehicleName),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
+                   Expanded(
+                     child: Text(
+                       _value(_handover['vehicleName'] ?? _data['vehicleName'] ?? ''),
+                       style: const TextStyle(
+                         fontSize: 16,
+                         fontWeight: FontWeight.w800,
+                       ),
+                     ),
+                   ),
                   _StatusBadge(status: returned ? 'Returned' : 'Running'),
                 ],
               ),
@@ -1132,7 +1490,7 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                   '₹${_value(_rate)}',
                 ),
               ]),
-            ]),
+            ], onEdit: _editVehicle),
             _section('Customer Details', [
               _detailRow([
                 _detail(Icons.person_outline, 'Name', _value(_name)),
@@ -1201,6 +1559,8 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                 _detailHelmet(
                   helmetCount: _hasExtraHelmet ? 2 : 1,
                 ),
+                if (_hasMobileHolder)
+                  const Icon(Icons.phone_android_outlined, size: 22),
                 const SizedBox.shrink(),
               ]),
             ], onEdit: _editRental),
@@ -1220,18 +1580,30 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                       ),
                       if (hasOverpaid) ...[
                         const SizedBox(height: 6),
-                        Text(
-                          'Overpaid: ₹${overpaid.toStringAsFixed(0)}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.green,
+                        InkWell(
+                          onTap: _showRefundDialog,
+                          child: Text(
+                            'Overpaid: ₹${overpaid.toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.green,
+                            ),
                           ),
                         ),
                       ],
                     ],
                   ),
                 ],
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: _showPaymentHistoryDialog,
+                  icon: const Icon(Icons.history_outlined, size: 16),
+                  label: const Text('Payment History'),
+                ),
               ),
             ], onEdit: _editPayment),
             Row(
@@ -1250,6 +1622,10 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                               },
                         icon: const Icon(Icons.calendar_month_outlined),
                         label: const Text('Extend Booking'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: returned ? Colors.grey : null,
+                          disabledForegroundColor: Colors.grey,
+                        ),
                       ),
                     ),
                   ),
@@ -1263,7 +1639,10 @@ class _BookingOverviewScreenState extends State<BookingOverviewScreen> {
                       child: ElevatedButton.icon(
                         onPressed: returned
                             ? null
-                            : () => widget.onReturn?.call(),
+                            : () async {
+                                await widget.onReturn?.call();
+                                await _reloadBooking();
+                              },
                         icon: const Icon(Icons.refresh),
                         label: Text(
                           returned ? 'Returned' : 'Return Vehicle',

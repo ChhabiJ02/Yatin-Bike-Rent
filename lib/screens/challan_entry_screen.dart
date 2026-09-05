@@ -1429,11 +1429,30 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            "Enter the customer's 10-digit mobile number",
-            style: TextStyle(fontSize: 15, color: Colors.grey),
+          TextFormField(
+            controller: _customerNameSearchController,
+            onChanged: _onCustomerNameSearchChanged,
+            textCapitalization: TextCapitalization.words,
+            decoration: InputDecoration(
+              labelText: 'Search by customer name',
+              hintText: 'Type customer name',
+              prefixIcon: const Icon(Icons.person_search),
+              suffixIcon: _isSearchingCustomerName
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 18),
           TextFormField(
             controller: _phoneController,
             keyboardType: TextInputType.phone,
@@ -1469,12 +1488,12 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
                       ),
                     )
                   : (_returningCustomer != null
-                        ? const Icon(
-                            Icons.check_circle,
-                            color: Color(0xFF00C853),
-                            size: 24,
-                          )
-                        : null),
+                      ? const Icon(
+                          Icons.check_circle,
+                          color: Color(0xFF00C853),
+                          size: 24,
+                        )
+                      : null),
               contentPadding: const EdgeInsets.symmetric(
                 vertical: 18,
                 horizontal: 16,
@@ -1490,30 +1509,6 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
                 borderSide: const BorderSide(color: Colors.black, width: 1.5),
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          TextFormField(
-            controller: _customerNameSearchController,
-            onChanged: _onCustomerNameSearchChanged,
-            textCapitalization: TextCapitalization.words,
-            decoration: InputDecoration(
-              labelText: 'Search by customer name',
-              hintText: 'Type customer name',
-              prefixIcon: const Icon(Icons.person_search),
-              suffixIcon: _isSearchingCustomerName
-                  ? const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  : null,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
               ),
             ),
           ),
@@ -1998,17 +1993,106 @@ class _ChallanEntryScreenState extends State<ChallanEntryScreen> {
           padding: const EdgeInsets.only(top: 6, bottom: 6),
           child: Align(
             alignment: Alignment.centerLeft,
-            child: Text(
-              'Overpaid: ₹${overpaid.toStringAsFixed(0)}',
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: Colors.green,
+            child: InkWell(
+              onTap: () => _showRefundDialog(overpaid),
+              child: Text(
+                'Overpaid: ₹${overpaid.toStringAsFixed(0)}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.green,
+                ),
               ),
             ),
           ),
         );
       },
+    );
+  }
+
+  Future<void> _showRefundDialog(double overpaid) async {
+    final customerCode = (_custCodeController.text.trim().isEmpty ||
+            _custCodeController.text == 'Generating...')
+        ? widget.custCode
+        : _custCodeController.text.trim();
+    if (customerCode == null || customerCode.isEmpty) return;
+
+    final controller = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Refund Amount'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Current Overpaid: ₹${overpaid.toStringAsFixed(0)}'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Refund Amount (₹)',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(10)),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final refundAmount =
+                  double.tryParse(controller.text.trim()) ?? 0;
+              if (refundAmount <= 0 || refundAmount > overpaid) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Invalid refund amount'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              await _processRefund(customerCode, refundAmount);
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            },
+            child: const Text('Confirm Refund'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+  }
+
+  Future<void> _processRefund(String customerCode, double refundAmount) async {
+    final currentPaid =
+        double.tryParse(_paidAmountController.text.trim()) ?? 0;
+    final newPaid = currentPaid - refundAmount;
+    final now = DateTime.now();
+    final refundTransaction = {
+      'type': 'Refunded',
+      'amount': refundAmount.toStringAsFixed(2),
+      'date': '${now.day}-${now.month}-${now.year}',
+      'time':
+          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    await _customersCollection.doc(customerCode).update({
+      'paidAmount': newPaid.toStringAsFixed(0),
+      'paymentHistory': FieldValue.arrayUnion([refundTransaction]),
+    });
+
+    _paidAmountController.text = newPaid.toStringAsFixed(0);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+          content: Text(
+              'Refund of ₹${refundAmount.toStringAsFixed(0)} processed')),
     );
   }
 

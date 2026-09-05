@@ -24,6 +24,7 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
   final _amountController = TextEditingController();
   final _transactionController = TextEditingController();
   final _notesController = TextEditingController();
+  final _refIdController = TextEditingController();
   String _paymentMode = 'Cash';
   bool _isSaving = false;
 
@@ -42,6 +43,7 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
     _amountController.dispose();
     _transactionController.dispose();
     _notesController.dispose();
+    _refIdController.dispose();
     super.dispose();
   }
 
@@ -58,6 +60,8 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _buildRefIdField(),
+            const SizedBox(height: 16),
             _buildPaymentModes(),
             const SizedBox(height: 16),
             _buildAmountField(),
@@ -79,6 +83,18 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildRefIdField() {
+    return TextFormField(
+      controller: _refIdController,
+      decoration: const InputDecoration(
+        labelText: 'Ref ID (Optional)',
+        labelStyle: TextStyle(color: Colors.black),
+        hintStyle: TextStyle(color: Colors.black),
+        border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
       ),
     );
   }
@@ -181,27 +197,56 @@ class _PaymentRecordScreenState extends State<PaymentRecordScreen> {
 
     try {
       final now = DateTime.now();
+      final enteredAmount = double.tryParse(_amountController.text.trim()) ?? 0;
+      final doc = await _customersCollection.doc(widget.custCode).get();
+      final data = doc.data() ?? {};
+      final currentPaid =
+          double.tryParse((data['paidAmount'] ?? '0').toString()) ?? 0;
+      final totalAmount =
+          double.tryParse((data['billAmount'] ?? '0').toString()) ?? 0;
+      final newPaidAmount = currentPaid + enteredAmount;
+      final dueAmount =
+          newPaidAmount < totalAmount ? totalAmount - newPaidAmount : 0;
+      final overpaidAmount =
+          newPaidAmount >= totalAmount ? newPaidAmount - totalAmount : 0;
+
       final payment = PaymentDetails(
         paymentAmount: _amountController.text.trim(),
         paymentDate: '${now.day}-${now.month}-${now.year}',
-        paymentTime: '${now.hour}:${now.minute}',
+        paymentTime: '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
         paymentMode: _paymentMode,
         transactionId: _transactionController.text.trim(),
         paymentNotes: _notesController.text.trim(),
         selectedQRName: '',
       );
 
+      final historyEntry = {
+        'type': 'Paid',
+        'amount': enteredAmount.toStringAsFixed(2),
+        'date': '${now.day}-${now.month}-${now.year}',
+        'time':
+            '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+        'timestamp': DateTime.now().toIso8601String(),
+        'refId': _refIdController.text.trim(),
+        'paymentMethod': _paymentMode,
+        'bankName': _paymentMode,
+        'transactionId': _transactionController.text.trim(),
+        'notes': _notesController.text.trim(),
+      };
+
       await _customersCollection.doc(widget.custCode).update({
         'payment': payment.toMap(),
-        'paidAmount': _amountController.text.trim(),
-        'paymentMode': _paymentMode,
+        'paidAmount': newPaidAmount.toStringAsFixed(0),
+        'dueAmount': dueAmount.toStringAsFixed(0),
+        'overpaidAmount': overpaidAmount.toStringAsFixed(0),
+        'paymentHistory': FieldValue.arrayUnion([historyEntry]),
       });
 
       if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Payment recorded')));
-        Navigator.pop(context, _amountController.text.trim());
+        Navigator.pop(context, newPaidAmount.toStringAsFixed(0));
       }
     } catch (e) {
       if (mounted) {
